@@ -380,6 +380,8 @@ the literal comment `# TODO: Check distance, LOS` above its
   right thing: a mobile NPC chases and swings once it arrives, a stationary
   one lands in `stationary_holds` and turns to face its target.
 
+**Melee first inside reach (NC-20).** Inside `NPC_MELEE_RANGE` an NPC that is not a pet takes an off-cooldown melee ability before any ranged one, whatever the ids. A Jaffa at 2 m therefore swings the staff melee (710) rather than 584, and a Goa'uld (set 5) at 2 m swings 711. Beyond 3 m the ranged half is picked as before. Pets (D-NC4) keep the lowest-id walk.
+
 `NPC_MELEE_RANGE` is derived from the weapon table rather than invented.
 `resources.items` carries `min_melee_range` / `max_melee_range` alongside
 the ranged pair; across every item binding an `EVENT_ITEM_MELEE` ability the

@@ -479,15 +479,13 @@ async fn live_db_seeded_harset_sets_never_select_their_melee_half_at_range() {
         );
 
         // The melee half is not blacklisted, just range-gated: inside
-        // NPC_MELEE_RANGE the lowest-id member wins again, which for set 5 is
-        // the melee one.
-        let expected_up_close = members.iter().copied().min().expect("set is non-empty");
+        // NPC_MELEE_RANGE the melee member wins first (NC-20, D-NC4).
         assert_eq!(
             choose_npc_ability_within_reach(npc_id, &mgr, WITHIN_MELEE, NPC_ATTACK_RANGE),
-            Some(expected_up_close),
-            "set {set_id}: inside {NPC_MELEE_RANGE} m both members are usable, so the \
-             lowest id ({expected_up_close}) wins — a gate that rejected melee \
-             unconditionally would return {ranged_half} here"
+            Some(melee_half),
+            "set {set_id}: inside {NPC_MELEE_RANGE} m an off-cooldown melee swing wins, so \
+             {melee_half} must be picked; a {ranged_half} here means the melee-first pass \
+             is gone"
         );
 
         // With the ranged half cooling and the target out of reach, nothing is
