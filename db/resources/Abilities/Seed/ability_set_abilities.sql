@@ -82,7 +82,7 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 1156
 -- off-cooldown ability in reach, so the lowest id is each pet's primary.
 -- Set 351, the Jaffa (template 351): set 4's staff pair (584 Staff Auto
 -- Attack, the ranged primary whose effect 646 deals HealthDamage 25; 710
--- Staff Melee AA, whose effect 736 has no damage values) plus 1652 Jaffa:
+-- Staff Melee AA, whose effect 736 deals the RECONSTRUCTED 10 Health + 100 Focus, NC-12) plus 1652 Jaffa:
 -- Double Blast. 1652 is PetTrained: in the original the owner trains it
 -- (Servant Lord L20) and SGWPlayer.knownPetAbilities carries it to the pet.
 -- The server has no knownPetAbilities path, so the pet's own set carries
