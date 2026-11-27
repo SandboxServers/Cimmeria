@@ -672,7 +672,7 @@ nearest pens. Respawn is 20 s for every row.
 |---|---|---|---|---|---|
 | `DebugArea_Ref_NID` | 14300 | 24 NID Guard | 3 | 559 | Fires the SMG ability; the reference human |
 | `DebugArea_Ref_PRU` | 14301 | 4 Prisoner retrieval unit | 2 | 221 | Fires its drone ability |
-| `DebugArea_Ref_ScavDog` | 14302 | 76 ScavDog | none | none | Falls back to the Pistol Shot placeholder (NC-13 gives it a melee set) |
+| `DebugArea_Ref_ScavDog` | 14302 | 76 ScavDog | 6 | 1433 | Melee only: Mob Strike, in reach (RECONSTRUCTED, NC-13); no Pistol Shot |
 | `DebugArea_Ref_JaffaGuard` | 14303 | 1380 Praxis Jaffa Guard | 4 | 584, 710 | Staff strike and the staff's ranged ability; faction 10 |
 | `DebugArea_Ref_JaffaLieutenant` | 14304 | 1381 Praxis Jaffa Lieutenant | 4 | 584, 710 | The same, beside the guard |
 
