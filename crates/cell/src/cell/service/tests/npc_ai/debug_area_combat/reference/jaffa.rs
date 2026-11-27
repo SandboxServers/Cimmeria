@@ -1,5 +1,5 @@
 //! NC-12: the Staff Melee AA (effect 736, ability 710) and the Mob Strike
-//! (effect 1717, ability 1433) carry damage again. Both payloads are
+//! (effect 1717, ability 1433) carry damage. Both payloads are
 //! RECONSTRUCTED from each ability's own description (D-NC2), not recovered
 //! original behaviour; the seed comments say so.
 
@@ -15,8 +15,9 @@ mod live_db {
     const PLAYER: u32 = 1;
 
     /// Effect 736 (Staff Melee AA) and 1717 (Mob Strike): the script is
-    /// `MeleePhysicalDamage` (as effect 656 has) and the NVPs read the
-    /// designer text "-100F -10H" and "-125F -15H". Revert proof: putting
+    /// `MeleePhysicalDamage` (as effect 656 has) and the NVPs are
+    /// reconstructed from the description text "-100F -10H" and "-125F -15H".
+    /// Revert proof: putting
     /// `NULL` back in `effects.sql` or dropping the NVP rows fails here.
     #[tokio::test]
     async fn live_db_reference_jaffa_melee_effects_carry_damage() {
@@ -44,8 +45,10 @@ mod live_db {
 
     /// The Jaffa Guard (1380) with its Staff Melee AA set, two metres from
     /// the player at 1000/1000 pools: within three AI passes the player loses
-    /// Health or Focus. Revert proof: `NULL` in place of the script, or no
-    /// NVP rows, makes effect 736 inert (`effect_inert`) and no damage lands.
+    /// Health or Focus. Revert proof: dropping the NVP rows (470-473) leaves
+    /// `MeleePhysicalDamage` with `no_damage_nvp` and no damage lands. A NULL
+    /// script alone is caught by `live_db_reference_jaffa_melee_effects_carry_damage`,
+    /// not by this test.
     #[tokio::test]
     async fn live_db_reference_jaffa_staff_swing_damages_in_reach() {
         let pool = require_db_or_skip!();
