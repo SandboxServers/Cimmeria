@@ -37,6 +37,9 @@ Each table row has one class from the campaign spec:
 - **STRONGLY INFERRED (SI):** follows from client data, but no single export states it.
 - **UNRESOLVED (UNR):** not established.
 
+The spec's other two classes (CURRENT CIMMERIA IMPLEMENTATION, RECONSTRUCTED) are not
+used here.
+
 ## How the presentation data fits together
 
 The client draws a weapon attack from four kinds of export:
@@ -91,20 +94,19 @@ wears. That is why every reference NPC, including the Jaffa and the drone, can r
 
 ## SequenceEvent byte values
 
-These byte values were observed in the KD entries. A meaning is given only where the
-KD names agree across three packages (`KD_WP-Jaffa`, `KD_WP-Human` and
-`MOB_CA_DroneTank`).
+These byte values were observed in the KD entries. A byte's reading is marked SI where
+the names agree in at least two packages and UNR where only one package carries it.
 
 | Byte | KD names that carry it | Reading | Class |
 |---|---|---|---|
 | 1 | `*-ChargeStart_*` | charge start | SI |
-| 2 | `*-Sing_*`, `*-BurstASR_*`, `*-Melee_0n`, `*-Tracer_Standard`, `Mul_CA-DroneFlyerEnergyShock` | fire or swing (source) | SI |
+| 2 | `*-Sing_*`, `*-BurstASR_*`, `*-Melee_0n`, `HM-Tracer_Standard`, `Mul_CA-DroneFlyerEnergyShock` (the staff tracer carries no byte) | fire or swing (source) | SI |
 | 7 | `*-Hit_*` | hit | SI |
-| 8 | `Mul_CA-HitCrit_EnergyShock` | critical hit | SI |
-| 9 | `Mul_CA-HitCrit2x_EnergyShock` | double critical | SI |
-| 10 | `Mul_CA-HitGlances_EnergyShock` | glancing hit | SI |
+| 8 | `Mul_CA-HitCrit_EnergyShock` | critical hit | UNR (drone package only; reading taken from the entry name) |
+| 9 | `Mul_CA-HitCrit2x_EnergyShock` | double critical | UNR (drone package only; reading taken from the entry name) |
+| 10 | `Mul_CA-HitGlances_EnergyShock` | glancing hit | UNR (drone package only; reading taken from the entry name) |
 | 11 | `*-Miss_*`, `*-HitMiss_*` | miss | SI |
-| 15 | `Mul_CA-DroneFlyerDeath` | death | SI |
+| 15 | `Mul_CA-DroneFlyerDeath` | death | UNR (drone package only; reading taken from the entry name) |
 
 - **UNR:** how these bytes line up with the seed `event_id` values 2002–2006 used by
   the target sequences. The seed has five target events and the KD has five hit
@@ -150,8 +152,9 @@ KD names agree across three packages (`KD_WP-Jaffa`, `KD_WP-Human` and
 | Muzzle socket | None. No `SkeletalMeshSocket` on this mesh is named `Muzzle`. | OCV |
 | `Muzzle` bone | The FName `Muzzle` sits in export 530's serial data at byte 340, among bone-table names. The staff AnimSets 303 (`JF-StaffWeapon_01_Closed`) and 304 (`_OpenAnimset`) list the track bones Origin, LHand, Muzzle, Head and Dummy01. | SI |
 
-- The KD `ComponentNameVar` value `Muzzle` (below) is therefore a bone name, and the
-  emitter attaches to the bone.
+- Only the ChargeStart KD entries (export 30 here) name `Muzzle`, so the charge effect
+  attaches at `Muzzle` (SI). The muzzle-flash and tracer entries carry no name var, so
+  their attach point is UNR.
 - `JM_Plasma_Staff` (export 554, sockets 678–682) is a different mesh. This component
   does not use it.
 
@@ -173,7 +176,7 @@ KD names agree across three packages (`KD_WP-Jaffa`, `KD_WP-Human` and
 - The remaining component entries were not dumped field by field. They are
   `JF-HitCrit2x`, `JF-HitCrit`, `JF-HitGlance` and `JF-Equip_SX` / `JF-Unequip_SX`,
   `Rec_StaffSing_Heavy_Rot`, and the `_MELSM_Sing` crit, glance and miss entries
-  (OCV by name).
+  (listed in the component, OCV; fields not read, UNR).
 - **The projectile is a particle tracer, not a projectile actor** (SI). The staff's
   ranged shot uses:
   - a muzzle flash, `WFX-SerpentStaffMuzzleFlash`;
@@ -219,12 +222,14 @@ melee distance 1 and `StaffRanged` at melee distance 2 (SI, from the matching by
 - `BS_JaffaMale.upk` holds no `sMAttack` names of its own. The sequences live in the
   stance AnimSets.
 
-**Answer: yes.** The body has melee AnimSequences that set 300 can drive (SI as a
-runtime chain, with every link OCV).
+**Answer: yes.** The body has melee AnimSequences that set 300 can drive (SI: the
+stance AnimSets and the KD animation names are OCV; that `KIS-SA_Melee_Source` selects
+those KD entries by key is UNR, see Unresolved).
 
 - `KIS-SA_Melee_Source` reads the weapon's melee KD.
 - The staff KD names `sMAttack1` and `sMAttack2` (exports 514 and 515).
-- Both names exist in the staff stances' AnimSets.
+- `sMAttack1` exists in StaffMelee and StaffRanged; `sMAttack2` exists in StaffMelee
+  only (so `JF-Staff_Melee_02` has nothing to play in StaffRanged).
 
 ### Unarmed Jaffa (`WP-Human.WP_HandToHand_1A`)
 
@@ -254,9 +259,11 @@ The 12 `KismetData` entries:
 | 219 | `HM-Hand2Hand_Melee_02` | 2 | Melee2 | `sMAttack2` | — | OCV |
 | 788 | `HM-Sing_MELH2H` | 2 | singmelee | — | `melee_gen/h2h/miss` | OCV |
 
-An unarmed Jaffa can therefore also drive set 300, through the `Hand2Hand` stance
-(`Weapon = 4`) and its `sMAttack1`/`sMAttack2` sequences (SI). It has no ranged KD at
-all, so set 3 has nothing to draw for templates 159 and 160 (SI).
+`WP_HandToHand_1A` has no serialized `Weapon` byte (OCV: export 74 lists only
+`BodyVisuals`), so which stance an unarmed Jaffa uses is UNR. The `Hand2Hand` stance
+(`Weapon = 4`, `Combat = 1`) and its `sMAttack1`/`sMAttack2` sequences exist (OCV), but
+nothing read links the component to it. It has no ranged KD at all, so set 3 has
+nothing to draw for templates 159 and 160 (SI).
 
 ## NID guard SMG: `WP-Human.WP_SMG_1A`
 
@@ -305,6 +312,9 @@ The 85 `KismetData` entries cover:
 | `Muzzle` bone | The FName `Muzzle` (name 1008) sits in export 458's serial data at byte 296, after `Aim` in the bone-name run. | SI |
 
 - `MuzzleG` (name 1009) is in the package name table but not in this mesh (OCV).
+- Only the ChargeStart KD entry (export 83 here) names `Muzzle`, so the charge effect
+  attaches at `Muzzle` (SI). The muzzle-flash and tracer entries carry no name var, so
+  their attach point is UNR.
 
 ### Kismet data (`Packages\Character\KD_WP-Human.upk`)
 
@@ -322,9 +332,11 @@ The 85 `KismetData` entries cover:
 - **Flash:** `WFX-autosust` for a sustained burst and `WFX-autoBurst` for a single
   shot (OCV).
 - **Tracer:** `WFX-tracer` (OCV). The ammo-specific tracers are separate KD entries
-  (OCV by name).
+  (listed in the component, OCV; fields not read, UNR).
 - **Burst timing:** `ComponentFloatVar 0.067` on `burstASR`. That is about 15 shots
   per second if the float is the repeat interval (SI on the meaning, OCV on the value).
+- Which hit entry an NPC shot reaches (SBR or an ammo variant) is UNR; `WFX-bulletburst`
+  is the SBR burst entry only (SI that it is the default).
 
 ## PRU drone: `MOB_DroneFlyer00`
 
@@ -401,10 +413,10 @@ the turret, not a socket (SI).
 | Gap | Finding | Class |
 |---|---|---|
 | Effect 1092 has no event set | Nothing in the client attaches to a missing event set. The KD keys are reached only through a sequence, so 1092 draws nothing however the assets are set. | SI |
-| Jaffa, drone and NID chains name `KIS-abilities_human` scripts, never `KIS-abilities_jaffa` | Not a family mismatch. The `KIS-SA_*` templates are generic: their `SeqAct_ComponentSlotData` nodes take `KeyName` and `SlotName` by variable link, and the assets come from the wearer's `ComponentKismetData`. The staff (`KD_WP-Jaffa`) and drone (`MOB_CA_DroneTank`) KD entries supply Jaffa- and drone-specific assets. | SI (each link OCV) |
-| Sequence 1869 (event 2004) is `KIS-SA_Beam_Source` inside target set 803 | Seed anomaly. The drone has no KD that a Beam *Source* would play on the *target* for a hit kind. The other four target events use `KIS-SA_Sing_Target`. Probably a seed slip for `KIS-SA_Sing_Target` (2004 is the third of the five target events). | SI (RECONSTRUCTED if the seed is changed) |
+| Jaffa, drone and NID chains name `KIS-abilities_human` scripts, never `KIS-abilities_jaffa` | Not a family mismatch. The `KIS-SA_*` templates are generic: their `SeqAct_ComponentSlotData` nodes take `KeyName` and `SlotName` by variable link, and the assets come from the wearer's `ComponentKismetData`. The staff (`KD_WP-Jaffa`) and drone (`MOB_CA_DroneTank`) KD entries supply Jaffa- and drone-specific assets. | SI (KD and slot-node exports OCV; the KeyName each node is fed is UNR) |
+| Sequence 1869 (event 2004) is `KIS-SA_Beam_Source` inside target set 803 | Seed anomaly: 1869 is a Source-type script (`KIS-SA_Beam_Source`) in a target set where the other four events use `KIS-SA_Sing_Target`. Whether that is a slip or intended is UNR, because the event-to-KD mapping is UNR. | UNR (the anomaly itself is ELD) |
 | Sequence 1105 is `KIS-SA_Burst_Source` inside target set 289 | The same pattern as 1869, on the SMG. Not checked in the client. | UNR |
-| Jaffa templates 159 and 160 have no `WP` component | The body default `WP-Human.WP_HandToHand_1A` applies: melee KD only. Sets 300 and 301 can draw; set 3 cannot. | SI |
+| Jaffa templates 159 and 160 have no `WP` component | The body default `WP-Human.WP_HandToHand_1A` applies: melee KD only. Sets 300 and 301 may draw (melee stance selection UNR, see above); set 3 cannot. | SI (ranged part), UNR (melee stance) |
 
 ## Unresolved
 
@@ -419,5 +431,8 @@ the turret, not a socket (SI).
 - Whether `Barrel` and `Muzzle` are bones or virtual sockets resolved by name in
   code. A Ghidra lookup of the `ComponentNameVar` attach path, or a live probe, would
   confirm it.
+- The attach point of the muzzle flash and tracer entries, which carry no name var.
+- Which hit entry an NPC shot reaches (SBR or an ammo variant) is UNR; `WFX-bulletburst`
+  is the SBR burst entry only.
 - None of this was checked against a running client. Everything is static package
   reading.
