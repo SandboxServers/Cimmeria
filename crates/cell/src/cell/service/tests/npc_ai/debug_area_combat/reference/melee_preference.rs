@@ -14,11 +14,12 @@ mod live_db {
     use crate::cell::spawner::load_spawn_templates;
     use crate::test_support::require_db_or_skip;
 
-    /// The seeded Jaffa Guard (1380, set 4) two metres from the player. One AI
-    /// tick starts an ability, and the warmup then fires it: the ability that
-    /// starts is 710, so 710 is on cooldown and 584 is not. Deliberately no
-    /// `pass`, which clears cooldowns. Revert proof: without the melee-first
-    /// pass the tick starts 584 and this fails.
+    /// The seeded Jaffa Guard (1380, set 4) two metres from the player. An Idle
+    /// NPC first aggroes on one AI tick, then starts an ability on a later
+    /// one, so passes run (each warmup fired at once) until an ability starts.
+    /// The ability that starts is 710, so 710 is on cooldown and 584 is not.
+    /// Deliberately no `pass`, which clears cooldowns. Revert proof: without
+    /// the melee-first pass the first ability started is 584 and this fails.
     #[tokio::test]
     async fn live_db_reference_jaffa_swings_staff_in_reach() {
         let pool = require_db_or_skip!();
@@ -33,12 +34,18 @@ mod live_db {
         let (tx, mut rx) = mpsc::channel(65_536);
         let engine = ChainEngine::new();
         let events = EngineEvents(&engine);
-        npc_ai_tick(&tx, &mut mgr, &events).await;
-        if let Some(pc) = mgr.get_entity_mut(id).and_then(|e| e.pending_cast.as_mut()) {
-            pc.fire_at = std::time::Instant::now();
+        for _ in 0..3 {
+            npc_ai_tick(&tx, &mut mgr, &events).await;
+            if let Some(pc) = mgr.get_entity_mut(id).and_then(|e| e.pending_cast.as_mut()) {
+                pc.fire_at = std::time::Instant::now();
+            }
+            warmup_tick(&tx, &mut mgr, &events).await;
+            while rx.try_recv().is_ok() {}
+            let npc = mgr.get_entity(id).expect("the Jaffa Guard exists");
+            if npc.abilities.is_on_cooldown(710) || npc.abilities.is_on_cooldown(584) {
+                break;
+            }
         }
-        warmup_tick(&tx, &mut mgr, &events).await;
-        while rx.try_recv().is_ok() {}
 
         let npc = mgr.get_entity(id).expect("the Jaffa Guard exists");
         assert!(
