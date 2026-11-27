@@ -122,3 +122,6 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3327
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3328);
 
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3329);
+
+-- RECONSTRUCTED (NC-13): ScavDog set 6 holds 1433 Mob Strike (D-NC5); 983 Bite stays unassigned; its event set 300 link is a PR #822 Tier 3 judgement call
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (6, 1433);

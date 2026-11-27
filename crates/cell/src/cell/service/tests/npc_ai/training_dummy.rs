@@ -49,6 +49,7 @@ fn fixture(training_dummy: bool, faction: i32) -> (SpaceManager, u32) {
     let mut record = npc_spawn_record("Castle", [0.0; 3], 0, VaultScope::Personal);
     record.faction = Some(faction);
     record.level = Some(50);
+    record.ability_ids = vec![592];
     record.training_dummy = training_dummy;
     // Mobile, like `lab_dummy`'s fixture NPC: a pinned one may hold fire on
     // a meshless space, which would make the control prove nothing.

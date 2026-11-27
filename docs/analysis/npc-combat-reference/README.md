@@ -60,11 +60,30 @@ Every registry row and every reconstructed seed comment uses exactly one of:
 | EARLIEST LEGACY DATA | The `db/resources` seeds (the Project Giza extraction) or the 2009 Python server, not checked against the client |
 | CURRENT CIMMERIA IMPLEMENTATION | What the Rust server does today, cited by file and line |
 | STRONGLY INFERRED | Indirect client evidence, such as a matching body family plus a generic KIS set, with no direct link |
-| RECONSTRUCTED | Behaviour this campaign supplies, such as a damage payload taken from the ability's own description |
+| RECONSTRUCTED | Behaviour or data Cimmeria chose by judgement, in this campaign or an earlier PR, such as a damage payload taken from the ability's own description |
 | UNRESOLVED | Unknown; listed in the registry's open list |
 
 `db/resources` is Project Giza's approximation, not CME's database
 (`.claude/agent-memory` reference note), so a seed row alone is never ORIGINAL.
+
+A seed value is classed by its evidence, not by who wrote it. RECONSTRUCTED
+covers any value Cimmeria chose by judgement, in this campaign or an earlier
+PR (cite the PR). CURRENT CIMMERIA IMPLEMENTATION is reserved for Rust server
+behaviour and is never used for a seed value. For an ability's
+`event_set_id` link (wave-0 ruling D1, `worknotes/wave0.md`):
+
+- the 35 links the Giza seed already held (non-NULL before PR #822,
+  `f153138b5`) are EARLIEST LEGACY DATA (559, 584, 710 and 221 are among them);
+- PR #822 Tier 1 (the weapon-family rule) and Tier 2 (what the weapon's items
+  fire) are STRONGLY INFERRED;
+- PR #822 Tier 3 (judgement calls, including 1433 and 983 to 300) is
+  RECONSTRUCTED;
+- ORIGINAL CLIENT VERIFIED needs a cooked client record naming that ability,
+  such as an `<ItemEventSet AbilityID=…>` row; the client has no ability-keyed
+  lookup (F11), so most links can never earn it.
+
+The event set's own sequences and effect links stay EARLIEST LEGACY DATA,
+because PR #822 changed only `abilities.event_set_id`.
 
 ## Findings
 
@@ -91,7 +110,7 @@ NC-03 stages Z12 "Combat reference range" in world 1300 from seeds only:
   They copy DA-04 1371's look column for column (body, components with the
   staff, colours, tint, mesh), so the lineup guard needs no new actor. They
   set faction 10, set 4 and name ids 8917 and 8918.
-- **Spawns 14110-14129**, tagged `DebugArea_Ref_*`, with aggressive defaults
+- **Spawns 14300-14319** (D-NC9), tagged `DebugArea_Ref_*`, with aggressive defaults
   (`aggression_override` NULL) and 20 s respawns. They place the **real**
   templates 24, 4 and 76 plus the clones.
 - **Player fixtures** reuse what Z2 already has: the ability granter (template
@@ -115,38 +134,39 @@ says yes. NC-05 upgrades or contradicts it later.
 
 | Id | Question | Recommendation | Status |
 |---|---|---|---|
-| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | BlockedDecision (gates NC-30) |
-| D-NC2 | How to give 736 and 1717 their damage | Hand NVP rows 470-473 plus `MeleePhysicalDamage`, the #493 precedent (effect 656), labelled RECONSTRUCTED from each effect's own description. Do not widen the generator's player-only scope | BlockedDecision (gates NC-12) |
+| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | Decided (owner, 2026-11-27): an NPC with no ability set idles and logs a warning, with no 592 fallback. NC-30 flips the policy |
+| D-NC2 | How to give 736 and 1717 their damage | Hand NVP rows 470-473 plus `MeleePhysicalDamage`, the #493 precedent (effect 656), labelled RECONSTRUCTED from each effect's own description. Do not widen the generator's player-only scope | Decided (owner, 2026-11-27): derive from the ability text, RECONSTRUCTED. Merged in #2089 |
 | D-NC3 | Staff on the real 159/160 | Clones (1380/1381) in the Debug Area now. Add `WP-Jaffa.WP_Staff_Plasma_4A` to 159/160 in place after the Jaffa reference passes, with lineup rows if their look changes. Keep their faction 1 | BlockedDecision (gates NC-22) |
-| D-NC4 | Melee preference in reach | NPCs only: within `NPC_MELEE_RANGE`, an off-cooldown melee ability wins over ranged. Pets keep lowest-id | BlockedDecision (gates NC-20) |
-| D-NC5 | Give ScavDog 1433 Mob Strike before the client evidence? | Yes, as RECONSTRUCTED: new set 6 = {1433}. 983 Bite stays unassigned until NC-05 finds evidence | BlockedDecision (gates NC-13) |
+| D-NC4 | Melee preference in reach | NPCs only: within `NPC_MELEE_RANGE`, an off-cooldown melee ability wins over ranged. Pets keep lowest-id | Decided (owner, 2026-11-27): yes, NPCs only |
+| D-NC5 | Give ScavDog 1433 Mob Strike before the client evidence? | Yes, as RECONSTRUCTED: new set 6 = {1433}. 983 Bite stays unassigned until NC-05 finds evidence | Decided (owner, 2026-11-27): yes, as RECONSTRUCTED |
 | D-NC6 | Make `weapon_item_id` load-bearing? | No. The `WP-*` visual component is the weapon evidence; `weapon_item_id` stays informational | BlockedDecision (contract assumes the recommendation) |
 | D-NC7 | Live-client UAT in the lab | Ask first, per run. Use Haiku lab-drivers at Z12, verified against the server log | BlockedDecision (gates W4) |
 | D-NC8 | 559's tooltip (-100F/-10H) against effect 621 (-200F/-20H) | No change. The effect row executes; record it as UNRESOLVED in the registry | BlockedDecision (record only) |
+| D-NC9 | NC-03 blocked: C3's spawns 14110-14129 belong to the DR-03b Armory (14110-14299, rows 14110-14116). Where does Z12 go? | Spawns 14300-14319 (14300-14304 used), footer floor 14319; templates 1380/1381 stand. Checked against `origin/main` 3a20a96a0: no spawnlist row from 14117 to 15799 and no doc reserves 14300+. The coder's 13700-13719 was rejected: it lies in DA-04's block, and `debug_area/reach.rs` `the_reach_guards_see_da04_rows` counts every 13600-13799 row against `spawnlist_debug_area_combat.sql` alone, so a separate reference file breaks it. C3, C4 and NC-03 are re-specced; re-dispatch NC-03 | Decided (architect ruling, 2026-11-27) |
 
 ## Packets
 
 | Id | Wave | Agent | What | Depends | Status |
 |---|---|---|---|---|---|
-| NC-01 | 0 | packet-coder | Combat-profile resolver module (pure) | none | Ready |
-| NC-02 | 0 | packet-coder | Evidence-registry skeleton | none | Ready |
-| NC-03 | 0 | rust-gameserver-dev | Debug Area Z12 reference range (seeds, tests, doc) | none | Ready |
-| NC-04 | 0 | packet-coder | Seed presentation-chain trace | none | Ready |
-| NC-05 | 0 | game-archaeology-specialist | ScavDog client assets (**client**) | owner client | Ready |
-| NC-06 | 0 | game-archaeology-specialist | Staff, PRU and NID presentation assets (**client**) | owner client | Ready |
-| NC-07 | 0 | combat-systems-advisor | Runtime blockers re-verified | none | Ready |
-| NC-10 | 1 | packet-coder | Wire the resolver and its diagnostics into spawn and AI | NC-01 | BlockedDependency |
-| NC-11 | 1 | packet-coder | NID 24 reference tests | NC-01, NC-03 | BlockedDependency |
-| NC-12 | 1 | packet-coder | Damage payloads for 736 and 1717 | NC-03, D-NC2 | BlockedDecision |
-| NC-14 | 1 | packet-coder | PRU 4 reference tests | NC-01, NC-03 | BlockedDependency |
-| NC-15 | 1 | packet-coder | Placeholder inventory (templates, callers, tests) | none | Ready |
-| NC-13 | 2 | packet-coder | ScavDog set 6 = 1433 | NC-12, D-NC5 | BlockedDecision |
-| NC-20 | 2 | packet-coder | NPC melee preference inside reach | NC-03, D-NC4 | BlockedDecision |
-| NC-21a | 2 | packet-coder | Make 592 explicit in tests, cell-world | NC-15 | BlockedDependency |
-| NC-21b | 2 | packet-coder | Make 592 explicit in tests, cell-combat | NC-15 | BlockedDependency |
-| NC-21c | 2 | packet-coder | Make 592 explicit in tests, other crates | NC-15 | BlockedDependency |
-| NC-23 | 2 | packet-coder | Regression: tutorial and CellBlock combat unchanged | NC-10, NC-12 | BlockedDependency |
-| NC-24 | 2 | packet-coder | Regression: Harset Jaffa and Jaffa pets | NC-12 | BlockedDependency |
+| NC-01 | 0 | packet-coder | Combat-profile resolver module (pure) | none | Integrated |
+| NC-02 | 0 | packet-coder | Evidence-registry skeleton | none | Integrated |
+| NC-03 | 0 | rust-gameserver-dev | Debug Area Z12 reference range (seeds, tests, doc) | none | Integrated |
+| NC-04 | 0 | packet-coder | Seed presentation-chain trace | none | Integrated |
+| NC-05 | 0 | game-archaeology-specialist | ScavDog client assets (**client**) | owner client | Integrated |
+| NC-06 | 0 | game-archaeology-specialist | Staff, PRU and NID presentation assets (**client**) | owner client | Integrated |
+| NC-07 | 0 | combat-systems-advisor | Runtime blockers re-verified | none | Integrated |
+| NC-10 | 1 | packet-coder | Wire the resolver and its diagnostics into spawn and AI | NC-01 | Integrated (#2089) |
+| NC-11 | 1 | packet-coder | NID 24 reference tests | NC-01, NC-03 | Integrated (#2089) |
+| NC-12 | 1 | packet-coder | Damage payloads for 736 and 1717 | NC-03, D-NC2 | Integrated (#2089) |
+| NC-14 | 1 | packet-coder | PRU 4 reference tests | NC-01, NC-03 | Integrated (#2089) |
+| NC-15 | 1 | packet-coder | Placeholder inventory (templates, callers, tests) | none | Integrated (#2089) |
+| NC-13 | 2 | packet-coder | ScavDog set 6 = 1433 | NC-12, D-NC5 | Integrated (W2 PR) |
+| NC-20 | 2 | packet-coder | NPC melee preference inside reach | NC-03, D-NC4 | Integrated (W2 PR) |
+| NC-21a | 2 | packet-coder | Make 592 explicit in tests, cell-world | NC-15 | Integrated (W2 PR) |
+| NC-21b | 2 | packet-coder | Make 592 explicit in tests, cell-combat | NC-15 | Integrated (W2 PR) |
+| NC-21c | 2 | packet-coder | Make 592 explicit in tests, other crates | NC-15 | Integrated (W2 PR) |
+| NC-23 | 2 | packet-coder | Regression: tutorial and CellBlock combat unchanged | NC-10, NC-12 | Integrated (W2 PR) |
+| NC-24 | 2 | packet-coder | Regression: Harset Jaffa and Jaffa pets | NC-12 | Integrated (W2 PR) |
 | NC-22 | 3 | packet-coder | Staff component on 159/160 in place | NC-12, NC-20, D-NC3 | BlockedDecision |
 | NC-30 | 3 | packet-coder | Flip to `RequireWeaponEvidence` | NC-10, NC-21a-c, NC-11..14, D-NC1 | BlockedDecision |
 | NC-31 | 3 | documentation-writer | Fill the evidence registry and the unresolved list | NC-02, NC-04..07, NC-11..14 | BlockedDependency |

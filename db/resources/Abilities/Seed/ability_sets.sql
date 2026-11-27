@@ -40,6 +40,9 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (4, 'Jaffa staff a
 
 INSERT INTO ability_sets (ability_set_id, description) VALUES (5, 'Goa''uld ribbon device ability set');
 
+-- RECONSTRUCTED (NC-13): ScavDog melee set 6 holds 1433 Mob Strike (D-NC5); its event set 300 link is a PR #822 Tier 3 judgement call
+INSERT INTO ability_sets (ability_set_id, description) VALUES (6, 'ScavDog: Mob Strike (RECONSTRUCTED, NC-13)');
+
 -- Pets campaign (docs/analysis/pets/): pet ability sets use ids 350-369,
 -- matching the pet templates, so they cannot collide with the low ids other
 -- content takes. Set 350 is the Straegis pet (template 350): 221 Energy Shock

@@ -365,8 +365,8 @@ Every gallery look also stands, friendly and passive, in
 [Z10, the Visual NPC Lineup](#visual-npc-lineup), with every other
 character look.
 
-**Placed: 99 of the 101 hostile templates.** 24 carry an ability set (sets 1
-to 5: the drones, the NID and SGC humans, the named Jaffa and the Goa'uld); the other 75 fall back to 592 Pistol Shot, so a creature fires a
+**Placed: 99 of the 101 hostile templates.** 25 carry an ability set (sets 1
+to 6: the drones, the NID and SGC humans, the named Jaffa, the Goa'uld and the ScavDog's Mob Strike); the other 74 fall back to 592 Pistol Shot, so a creature fires a
 pistol until it gets its own kit. 62 have no display name (no `name_id`, or an
 empty moniker such as 4's): their nameplate is blank, which is why each one
 has a tag.
@@ -672,7 +672,7 @@ nearest pens. Respawn is 20 s for every row.
 |---|---|---|---|---|---|
 | `DebugArea_Ref_NID` | 14300 | 24 NID Guard | 3 | 559 | Fires the SMG ability; the reference human |
 | `DebugArea_Ref_PRU` | 14301 | 4 Prisoner retrieval unit | 2 | 221 | Fires its drone ability |
-| `DebugArea_Ref_ScavDog` | 14302 | 76 ScavDog | none | none | Falls back to the Pistol Shot placeholder (NC-13 gives it a melee set) |
+| `DebugArea_Ref_ScavDog` | 14302 | 76 ScavDog | 6 | 1433 | Melee only: Mob Strike, in reach (RECONSTRUCTED, NC-13); no Pistol Shot |
 | `DebugArea_Ref_JaffaGuard` | 14303 | 1380 Praxis Jaffa Guard | 4 | 584, 710 | Staff strike and the staff's ranged ability; faction 10 |
 | `DebugArea_Ref_JaffaLieutenant` | 14304 | 1381 Praxis Jaffa Lieutenant | 4 | 584, 710 | The same, beside the guard |
 
@@ -783,7 +783,7 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   seen in this map.
 - DA-03: the patroller walks navmesh heights, which float up to about 2.6 m
   above the terrain on the slope between z -690 and -650.
-- DA-03: 75 gallery NPCs fall back to 592 Pistol Shot and play the pistol
+- DA-03: 74 gallery NPCs fall back to 592 Pistol Shot (NC-13 moved the ScavDog to set 6) and play the pistol
   animation on creature and staff bodies; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
@@ -845,7 +845,7 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
 | 13307 | 74 | AMBRat | Rat | 1 | 592 fallback | (99, -592) |
-| 13308 | 76 | ScavDog | (none) | 1 | 592 fallback | (103, -592) |
+| 13308 | 76 | ScavDog | (none) | 1 | 6 (Mob Strike) | (103, -592) |
 | 13309 | 73 | Lenny | Lenny | 1 | 592 fallback | (107, -592) |
 | 13310 | 72 | Horden | (none) | 1 | 592 fallback | (113, -592) |
 | 13311 | 75 | Rhinolion | (none) | 1 | 592 fallback | (121, -592) |
