@@ -18,7 +18,9 @@
 //! - [`threat`]: NPC aggro state, threat list, leash/attack-range constants.
 //! - [`vitals`]: player health/focus telemetry (`target: "vitals"`).
 
-pub use cimmeria_cell_world::cell::combat::{aggression, faction_reaction, health_threshold};
+pub use cimmeria_cell_world::cell::combat::{
+    aggression, combat_profile, faction_reaction, health_threshold,
+};
 pub mod auto_cycle;
 pub mod damage;
 pub mod damage_credit;
