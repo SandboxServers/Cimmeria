@@ -19,7 +19,7 @@ Every row uses exactly one of these six classes (from README § Evidence classif
 | EARLIEST LEGACY DATA | The `db/resources` seeds (the Project Giza extraction) or the 2009 Python server, not checked against the client |
 | CURRENT CIMMERIA IMPLEMENTATION | What the Rust server does today, cited by file and line |
 | STRONGLY INFERRED | Indirect client evidence, such as a matching body family plus a generic KIS set, with no direct link |
-| RECONSTRUCTED | Behaviour this campaign supplies, such as a damage payload taken from the ability's own description |
+| RECONSTRUCTED | Behaviour or data Cimmeria chose by judgement, in this campaign or an earlier PR, such as a damage payload taken from the ability's own description |
 | UNRESOLVED | Unknown; listed in the registry's open list |
 
 Rows follow the C6 layout: `Field | Value | Class | Source | Packet`.
@@ -80,12 +80,13 @@ columns are Guard (160) and Lieutenant (159).
 | Weapon item and component ids | `weapon_item_id` NULL; components `MOB_ScavDog.MOB_ScavDog_00` | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-05 |
 | Ability set | `ability_set_id` NULL: no set | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-13 (D-NC5) |
 | Empty-set fallback | An empty set adds 592 Pistol Shot (a humanoid firearm) through `NPC_DEFAULT_ABILITY` | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-world/src/cell/space_manager/spawn.rs:314-320`; `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-67` | NC-13 (D-NC5) |
-| Unassigned ability 1433 | `Mob Strike`, melee, event set 300, effects `{1717}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:2047` | NC-13 |
+| Unassigned ability 1433 | `Mob Strike`, melee, event set 300 (added by PR #822; see the link row), effects `{1717}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:2047` | NC-13 |
 | Effect 1717 | `Strike Damage`, event set 301, script NULL, desc `-125F -15H`, no NVP rows | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:3012`; `effect_nvps.sql` (no `1717` row) | NC-13 |
-| Unassigned ability 983 | `Bite`, melee, event set 300, effects `{1092}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `abilities.sql:5036` | NC-05 |
+| Unassigned ability 983 | `Bite`, melee, event set 300 (added by PR #822; see the link row), effects `{1092}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `abilities.sql:5036` | NC-05 |
 | Effect 1092 | `Bite Damage`, event set NULL, script NULL, desc `-125F -15H` | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:2471` | NC-05 |
+| Link 1433 and 983 → event set 300 | Both NULL in the Giza seed; PR #822 set 300 as Tier-3 judgement calls | RECONSTRUCTED | [ability-animation-links.md](../../reverse-engineering/findings/ability-animation-links.md) § Tier 3; commit `f153138b5` | NC-05 |
 | Moniker 1470900795 | Not in `db/resources/Entities/Seed/monikers.sql` (see Open) | UNRESOLVED | `monikers.sql` | NC-13 |
-| Event sets | Template event set 570 `Players default event set`; ability event set 300 `Generic melee weapon source`; effect event set 301 `Generic melee weapon target` | EARLIEST LEGACY DATA | `entity_templates.sql:153`; `event_sets.sql:431`, `:771` | NC-04 |
+| Event sets | Template event set 570 `Players default event set`; event set 300 `Generic melee weapon source`; effect event set 301 `Generic melee weapon target` (its link from 1433 and 983 is the RECONSTRUCTED row above) | EARLIEST LEGACY DATA | `entity_templates.sql:153`; `event_sets.sql:431`, `:771` | NC-04 |
 | Loot, faction, level | loot NULL; faction 10; level 1 | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-02 |
 | Sequence ids | `mob_scav.fev` has five attack variants, said to be referenced by mob notifies; per-notify ownership unverified | UNRESOLVED | (client FEV) | NC-05 |
 | Animation package, audio, client build | Not checked | UNRESOLVED | (client UPK, pak) | NC-05 |
