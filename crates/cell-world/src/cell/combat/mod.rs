@@ -14,6 +14,7 @@
 //! re-exports these modules at their old paths.
 
 pub mod aggression;
+pub mod combat_profile;
 pub mod faction_reaction;
 pub mod health_threshold;
 
