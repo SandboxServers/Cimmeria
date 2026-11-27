@@ -31,7 +31,8 @@ on its branch; EXCL as in the lane-build skill), NC-31, NC-33, NC-34.
 - **Tests:** the updated NC-24 test 1, and
   `debug_area_lineup_live_db_every_look_has_an_actor`.
 - **Lane:** fmt and clippy `-p cimmeria-cell`;
-  `live-db-test.ps1 regression_harset`; `live-db-test.ps1 lineup`.
+  `live-db-test.ps1 regression_harset`; `live-db-test.ps1 lineup`;
+  `live-db-test.ps1 pet_roster`.
 - **Docs:** the `debug-area.md` lineup table, only if you add an actor.
 - **Rules:** R1-R8, R10.
 

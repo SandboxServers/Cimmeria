@@ -1951,13 +1951,13 @@ colour or skin tint, which the lineup sends (see
 | 13945 | 1485 | JaffaMale Template - D #155 BS_JaffaMale | S1 (326.25, -937) | yes, sent | 155 |
 | 13946 | 1486 | Praxis Jaffa Guard #189 BS_JaffaMale | S1 (328.5, -937) | none | 189, 351 |
 | 13947 | 1487 | Petbe #163 BS_JaffaMale | S1 (330.75, -937) | yes, sent | 163 |
-| 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | none | 200, 201, 209 |
+| 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | none | 159, 200, 201, 209 |
 | 13949 | 1489 | Bra'hin #202 BS_JaffaMale | S1 (335.25, -937) | none | 202 |
 | 13950 | 1490 | Ra's Jaffa #203 BS_JaffaMale | S1 (337.5, -937) | none | 203, 204, 205, 1406 |
 | 13951 | 1491 | Angry Jaffa #206 BS_JaffaMale | S2 (316, -942) | none | 206, 207, 208 |
 | 13952 | 1492 | Petbe #221 BS_JaffaMale | S2 (318.25, -942) | yes, sent | 221 |
 | 13953 | 1493 | Jaffa #1310 BS_JaffaMale | S2 (320.5, -942) | none | 1310, 1311, 1312, 1313 |
-| 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | none | 1371 |
+| 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | none | 160, 1371 |
 | 13955 | 1495 | (no template) BS_RaJaff | S2 (325, -942) | none | none |
 
 #### Jaffa, female (30)
