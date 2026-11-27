@@ -845,7 +845,7 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
 | 13307 | 74 | AMBRat | Rat | 1 | 592 fallback | (99, -592) |
-| 13308 | 76 | ScavDog | (none) | 1 | 592 fallback | (103, -592) |
+| 13308 | 76 | ScavDog | (none) | 1 | 6 (Mob Strike) | (103, -592) |
 | 13309 | 73 | Lenny | Lenny | 1 | 592 fallback | (107, -592) |
 | 13310 | 72 | Horden | (none) | 1 | 592 fallback | (113, -592) |
 | 13311 | 75 | Rhinolion | (none) | 1 | 592 fallback | (121, -592) |
