@@ -96,7 +96,8 @@ pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
 
 /// [`choose_npc_ability`] with a reach filter: prefer the lowest-id
 /// off-cooldown ability that can actually be used at `target_dist`, and
-/// fall back to the unfiltered pick when none can.
+/// fall back to the unfiltered pick when none can. Inside `NPC_MELEE_RANGE`
+/// an NPC (not a pet) takes an off-cooldown melee swing first (NC-20).
 ///
 /// This is the production entry point; the unfiltered
 /// [`choose_npc_ability`] is the fallback arm and stays reachable on its
@@ -130,13 +131,21 @@ pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
 /// the fight tick's existing out-of-range arm does the right thing for
 /// free: a mobile NPC chases, and a stationary one holds and turns to face.
 ///
+/// # Melee first inside reach (NC-20, D-NC4)
+///
+/// An NPC whose target is inside `NPC_MELEE_RANGE` takes an off-cooldown melee
+/// ability before any ranged one, so a Jaffa at 2 m swings 710 rather than
+/// firing 584, and a Goa'uld (set 5) at 2 m swings 711. Pets are exempt and
+/// keep the lowest-id walk: the owner's kit order is theirs to pick.
+///
 /// # Effect on single-ability sets
 ///
 /// None. Every set that predates H09 — 1 (`579`), 2 (`221`), 3 (`559`), and
 /// the `NPC_DEFAULT_ABILITY` (`592`) empty-bucket fallback — holds one
 /// `is_ranged = true` ability, so the filter either accepts the same pick
 /// the unfiltered walk would have made, or accepts nothing and delegates to
-/// it. Sets 4 and 5 are the only sets in the seed carrying a melee ability.
+/// it. Sets 4 and 5 are the only sets in the seed carrying a melee ability;
+/// they differ only inside `NPC_MELEE_RANGE`, where the melee half now wins.
 pub(in crate::cell) fn choose_npc_ability_within_reach(
     npc_id: u32,
     space_mgr: &SpaceManager,
@@ -147,6 +156,23 @@ pub(in crate::cell) fn choose_npc_ability_within_reach(
 
     let mut ability_ids = npc.abilities.known_ability_ids();
     ability_ids.sort_unstable();
+
+    let is_pet = super::pet::is_pet(space_mgr, npc_id);
+    if !is_pet && target_dist <= crate::cell::combat::NPC_MELEE_RANGE {
+        let melee = ability_ids.iter().copied().find(|&id| {
+            !npc.abilities.is_on_cooldown(id)
+                && super::pet::ability_allowed(space_mgr, npc, id)
+                && space_mgr
+                    .ability_defs
+                    .get(&id)
+                    .is_some_and(|d| !d.is_ranged)
+                && effective_max_range(space_mgr.ability_defs.get(&id), npc_attack_range)
+                    >= target_dist
+        });
+        if melee.is_some() {
+            return melee;
+        }
+    }
 
     let in_reach = ability_ids.into_iter().find(|&id| {
         !npc.abilities.is_on_cooldown(id)

@@ -119,3 +119,100 @@ fn a_mob_still_picks_an_ability_that_does_nothing() {
         .remove::<PetState>();
     assert_eq!(choose_npc_ability(pet, &mgr), Some(first));
 }
+
+/// The Jaffa's set 4 halves: 584 is the ranged auto-attack, 710 its melee
+/// partner. The melee half sorts second, so only the melee-first pass (NC-20)
+/// can make it win inside reach.
+const RANGED_AA: i32 = 584;
+const MELEE_AA: i32 = 710;
+
+/// A def for `id` that can be used at any range. `is_ranged` picks the half;
+/// an event set keeps a pet from skipping it as a no-op (PT-11).
+fn def_swing(mgr: &mut SpaceManager, id: i32, is_ranged: bool) {
+    mgr.ability_defs.insert(
+        id,
+        cimmeria_entity::abilities::AbilityDef {
+            ability_id: id,
+            name: format!("Swing{id}"),
+            cooldown: 1.0,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged,
+            min_range: 0.0,
+            max_range: 0.0,
+            target_type_id: 2,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            item_monikers: vec![],
+            required_ammo: 0,
+            event_set_id: Some(3),
+            velocity: 100.0,
+            type_id: Default::default(),
+            passive: false,
+        },
+    );
+}
+
+/// A mob in Agnos that knows 584 and 710, with both defs in place.
+fn mob_with_jaffa_set() -> (SpaceManager, u32) {
+    let mut mgr = make_world();
+    def_swing(&mut mgr, RANGED_AA, true);
+    def_swing(&mut mgr, MELEE_AA, false);
+    mgr.create_entity(MOB, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(MOB).unwrap().abilities =
+        cimmeria_entity::abilities::AbilityManager::with_abilities(&[RANGED_AA, MELEE_AA]);
+    (mgr, MOB)
+}
+
+/// NC-20: a mob inside `NPC_MELEE_RANGE` swings its melee half first, though
+/// the ranged half has the lower id. Revert proof: without the melee-first
+/// pass this picks 584.
+#[test]
+fn a_mob_swings_melee_inside_melee_range() {
+    let (mgr, mob) = mob_with_jaffa_set();
+    assert_eq!(
+        choose_npc_ability_within_reach(mob, &mgr, 2.0, 30.0),
+        Some(MELEE_AA)
+    );
+}
+
+/// NC-20: beyond `NPC_MELEE_RANGE` the melee-first pass does not run, so the
+/// ranged half is picked. Revert proof: a melee swing at 15 m would be wrong.
+#[test]
+fn a_mob_fires_ranged_beyond_melee_range() {
+    let (mgr, mob) = mob_with_jaffa_set();
+    assert_eq!(
+        choose_npc_ability_within_reach(mob, &mgr, 15.0, 30.0),
+        Some(RANGED_AA)
+    );
+}
+
+/// NC-20: with the melee swing cooling, a mob inside reach falls back to the
+/// ranged half rather than holding fire.
+#[test]
+fn a_mob_fires_ranged_when_the_melee_swing_is_cooling() {
+    let (mut mgr, mob) = mob_with_jaffa_set();
+    mgr.get_entity_mut(mob)
+        .unwrap()
+        .abilities
+        .start_ability_cooldown(MELEE_AA, std::time::Duration::from_secs(60));
+    assert_eq!(
+        choose_npc_ability_within_reach(mob, &mgr, 2.0, 30.0),
+        Some(RANGED_AA)
+    );
+}
+
+/// NC-20, D-NC4: pets are exempt from the melee-first pass and keep the
+/// lowest-id walk, so a pet inside reach still fires 584.
+#[test]
+fn a_pet_keeps_the_lowest_id_inside_melee_range() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    def_swing(&mut mgr, RANGED_AA, true);
+    def_swing(&mut mgr, MELEE_AA, false);
+    mgr.get_entity_mut(pet).unwrap().abilities =
+        cimmeria_entity::abilities::AbilityManager::with_abilities(&[RANGED_AA, MELEE_AA]);
+    assert_eq!(
+        choose_npc_ability_within_reach(pet, &mgr, 2.0, 30.0),
+        Some(RANGED_AA)
+    );
+}
