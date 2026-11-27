@@ -5,7 +5,7 @@ Packet: NC-34. Campaign: `docs/analysis/npc-combat-reference/`. Read with
 [work-packets.md](work-packets.md). This note proposes one follow-up
 campaign for the six roster NPCs that the reference campaign left out. It
 changes no seed, no code and no test. Assignment waits for the W4 UAT
-(brief § Definition of done) and for the owner's go-ahead on D-NC7.
+(brief § Definition of done) and for a fresh "may I use the lab now?" before each run (D-NC7, decided).
 
 ## Why these six need a campaign
 
@@ -26,12 +26,12 @@ changes no seed, no code and no test. Assignment waits for the W4 UAT
 
 | Roster NPC | Templates (world / lineup) | Body family and components | Matching reference pipeline | Candidate abilities and the evidence each still needs | Packet shape |
 |---|---|---|---|---|---|
-| Carnosaur | 71 / 1559 (name_id 26846) | creature `MOB_Carnosaur.BS_MOB_Carnosaur`; `MOB_Carnosaur.BC_MOB_Carnosaur` | organic: ScavDog (NC-13) | 983 `Bite` (unassigned, EARLIEST LEGACY, effect 1092 `-125F -15H`) or 1433 `Mob Strike` (set 6, RECONSTRUCTED, effect 1717). Needs: a client record or sequence in `MOB_Carnosaur` that names the attack (ORIGINAL CLIENT VERIFIED), and the owner's choice of damage text (RECONSTRUCTED from the ability text, per D-NC2) | one seed packet: new set with one ability, effect NVPs and the C5 comment, `ability_set_id` on templates 71 and 1559 |
+| Carnosaur | 71 / 1559 (name_id 26846) | creature `MOB_Carnosaur.BS_MOB_Carnosaur`; `MOB_Carnosaur.BC_MOB_Carnosaur` | organic: ScavDog (NC-13) | 983 `Bite` (unassigned, EARLIEST LEGACY DATA, effect 1092 `-125F -15H`; NC-05 found no client evidence for it on ScavDog, registry O5, and moniker 1470900795 is UNRESOLVED, O2) or 1433 `Mob Strike` (set 6, RECONSTRUCTED, effect 1717). Needs: a client record or sequence in `MOB_Carnosaur` that names the attack (ORIGINAL CLIENT VERIFIED), and the owner's choice of damage text (RECONSTRUCTED from the ability text, per D-NC2) | one seed packet: new set with one ability, effect NVPs and the C5 comment, `ability_set_id` on templates 71 and 1559 |
 | Horden | 72 / 1558 | creature `MOB_Horden.BS_MOB_Horden`; `MOB_Horden.MOB_Horden00` | organic: ScavDog | as Carnosaur, with the `MOB_Horden` package | one seed packet, as Carnosaur, on templates 72 and 1558 |
-| Lenny | 73 / 1556 (name_id 7485); 1557 is a lineup-only baby (`BS_MOB_LennyBaby`, no template) | creature `MOB_Lenny.BS_MOB_Lenny`; `MOB_Lenny.MOB_Lenny00` | organic: ScavDog | as Carnosaur. `MOB_Lenny.upk` is in the ancient-assets inventory (file presence only; its sequences are UNRESOLVED). The baby has no template, so its row is a lineup decision, not a seed decision | one seed packet on 73 and 1556; the baby (1557) is an owner call |
+| Lenny | 73 / 1556 (name_id 7485); 1557 is a lineup-only baby (`BS_MOB_LennyBaby`, a lineup-only template row with no world template) | creature `MOB_Lenny.BS_MOB_Lenny`; `MOB_Lenny.MOB_Lenny00` | organic: ScavDog | as Carnosaur. `MOB_Lenny.upk` is in the ancient-assets inventory (file presence only; its sequences are UNRESOLVED). The baby has a lineup template row but no world template, so setting its `ability_set_id` is an owner call | one seed packet on 73 and 1556; the baby (1557) is an owner call |
 | AMBRat | 74 / 1554 (name_id 7940); hostile test mob | creature `MOB_AMBRat.BS_MOB_Rat`; `MOB_AMBRat.MOB_AMBRat_00` | organic: ScavDog | as Carnosaur. It is the hostile mob the hub-pass UAT uses, so its evidence should come first | one seed packet on 74 and 1554, placed first in the campaign |
 | Rhinolion | 75 / 1560 | creature `MOB_Rhinolion.BS_MOB_Rhinolion00`; `MOB_Rhinolion.MOB_Rhinolion00` | organic: ScavDog | as Carnosaur | one seed packet on 75 and 1560 |
-| Unas | world 105-110 (male) and 132-137 (female); lineup 1476-1481 and 1517-1522 | Jaffa body `BS_JaffaMale` or `BS_JaffaFemale`, with the `AR_J_Unas.*` armour parts. No `WP-*` component. Client Unas kit: `AR_J_*` (Unas) in the pets content inventory | Jaffa-body reference (NC-12), but Unas carry no weapon, so the staff step does not apply. No ScavDog-style creature match | No candidate ability in the seeds. The pets content inventory records that no Unas pet ability exists. Needs: a melee or ranged attack the Unas use in the client (ORIGINAL CLIENT VERIFIED), then an ability row | an owner decision first (see below); then one seed packet if the owner wants Unas to fight |
+| Unas | world 105-110 (male) and 132-137 (female); lineup 1476-1481 and 1517-1522 | Jaffa body `BS_JaffaMale` or `BS_JaffaFemale`, with the `AR_J_Unas.*` armour parts. No `WP-*` component. Client Unas kit: `AR_J_*` (Unas) in the pets content inventory | Jaffa-body reference (templates 159 and 160, registry section; damage payload from NC-12), but Unas carry no weapon, so the staff step does not apply. No ScavDog-style creature match | No candidate ability in the seeds. The pets content inventory records that no Unas pet ability exists. Needs: a melee or ranged attack the Unas use in the client (ORIGINAL CLIENT VERIFIED), then an ability row | an owner decision first (see below); then one seed packet if the owner wants Unas to fight |
 
 ## Decisions the owner must make before assignment
 
@@ -41,15 +41,14 @@ changes no seed, no code and no test. Assignment waits for the W4 UAT
    set 6 (`Mob Strike`) is the quickest path. It would also give six NPCs an
    attack the client has not shown for them, so this spec does not recommend
    it. The default shape is one set per creature.
-3. **Lenny's baby (1557).** It has no template, so it can stay a lineup-only
-   row.
+3. **Lenny's baby (1557).** It has a lineup template row (`ability_set_id` NULL) and no world template, so it can stay as it is (idle) or take Lenny's set.
 
 ## Packet shape (applies to each organic seed packet)
 
 - Seed only, with no code change: a new `ability_sets` row
   (`description` carrying `RECONSTRUCTED`), one `ability_set_abilities` row,
   `ability_set_id` on the template and on its lineup row, and the effect NVP
-  rows if a new effect is needed. Each changed row gets the C5 comment. The
+  rows if a new effect is needed. If the chosen ability is 983 Bite, the packet also edits effect 1092 in place: set its trailing `script_name` from NULL to `'MeleePhysicalDamage'` and add HealthDamage 15 and FocusDamage 125 NVP rows (ids from the architect's C3 block, outside 470-479), each RECONSTRUCTED from the effect text `-125F -15H` (D-NC2 pattern, NC-12). Ability 983 reaches event set 300 only through the PR #822 Tier 3 link, which is RECONSTRUCTED. Ability 1433 needs none of this: effect 1717 is done. Each changed row gets the C5 comment. The
   set id comes from the C3 block, assigned by the architect.
 - A reference test in `reference/` in the ScavDog shape (NC-13): the
   template picks its own set, the set is non-empty, and the server path
