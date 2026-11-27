@@ -168,6 +168,36 @@ fn spawn_record_with_ability_ids_skips_default_fallback() {
     );
 }
 
+/// Resolver wiring: a record whose `ability_ids` are empty spawns knowing
+/// exactly [592] (the Legacy placeholder, via `combat_profile`).
+#[test]
+fn spawn_record_with_empty_ability_ids_knows_exactly_592() {
+    let mut mgr = make_manager_with_worlds();
+    let mut record = make_test_record("Agnos", Some("Placeholder"), "mob");
+    record.template_id = 0x7000_0204;
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc_from_record(npc_id, &record).unwrap();
+
+    let npc = mgr.get_entity(npc_id).unwrap();
+    assert_eq!(npc.abilities.known_ability_ids(), vec![592]);
+}
+
+/// Resolver wiring: an explicit set spawns knowing exactly those abilities
+/// and no placeholder.
+#[test]
+fn spawn_record_with_explicit_set_knows_exactly_that_set() {
+    let mut mgr = make_manager_with_worlds();
+    let mut record = make_test_record("Agnos", Some("Explicit"), "mob");
+    record.ability_ids = vec![584, 710];
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc_from_record(npc_id, &record).unwrap();
+
+    let npc = mgr.get_entity(npc_id).unwrap();
+    let mut known = npc.abilities.known_ability_ids();
+    known.sort_unstable();
+    assert_eq!(known, vec![584, 710]);
+}
+
 /// A `SpawnRecord` with empty `ability_ids` (template has no
 /// `ability_set_id`, the LEFT JOIN produced no rows) falls back to
 /// `NPC_DEFAULT_ABILITY` so the AI tick has something to fire. Without

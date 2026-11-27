@@ -134,5 +134,8 @@ pub fn first_report(template_id: i32) -> bool {
         .insert(template_id)
 }
 
+mod report;
+pub use report::report_profile;
+
 #[cfg(test)]
 mod tests;
