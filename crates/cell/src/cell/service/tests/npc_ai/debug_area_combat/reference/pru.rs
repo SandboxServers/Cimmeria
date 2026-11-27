@@ -72,7 +72,9 @@ mod live_db {
 
     /// A PRU at x = 10 fires Energy Shock at a player with 1000/1000 pools:
     /// over up to four AI passes the player loses Health plus Focus. Revert
-    /// proof: removing the PRU's ability or its effect leaves both pools full.
+    /// proof: dropping the PRU's ability set gives it the 592 fallback and
+    /// fails the known-abilities assert; removing effect 264 leaves both pools
+    /// full.
     #[tokio::test]
     async fn live_db_reference_pru_shock_damages_a_player() {
         let pool = require_db_or_skip!();
@@ -82,6 +84,11 @@ mod live_db {
         mgr.connect_entity(PLAYER);
         const NPC: u32 = 300_400;
         spawn(&mut mgr, &templates, NPC, 4, 10.0, 0.0);
+        assert_eq!(
+            mgr.get_entity(NPC).unwrap().abilities.known_ability_ids(),
+            vec![221],
+            "the PRU fires only Energy Shock"
+        );
         let _ = mgr.compute_aoi_changes();
         let (tx, mut rx) = mpsc::channel(65_536);
         for _ in 0..4 {
