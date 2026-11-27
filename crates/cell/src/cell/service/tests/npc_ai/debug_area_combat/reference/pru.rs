@@ -41,13 +41,11 @@ fn pru_reference_has_integrated_weapon() {
 
 mod live_db {
     use super::super::super::live_db::{fight_space, pass, set_pools, spawn};
+    use super::super::super::PLAYER;
     use crate::cell::spawner::{load_ability_defs, load_effect_defs, load_spawn_templates};
     use crate::test_support::require_db_or_skip;
     use cimmeria_entity::stats::{FOCUS, HEALTH};
     use tokio::sync::mpsc;
-
-    /// The player id `fight_space` creates (its own `PLAYER` is private).
-    const PLAYER: u32 = 1;
 
     /// Ability 221 is ranged and fires effect 264; effect 264 is
     /// `RangedEnergyDamage` with HealthDamage 16 and FocusDamage 80. Revert
