@@ -1,1 +1,760 @@
----\r\ntitle: "NPC AI System"\r\ntype: reference\r\naudience: engineers\r\nlast_updated: 2026-09-25\r\n---\r\n\r\n# NPC AI System\r\n\r\n> **Last updated**: 2026-09-25\r\n> **Status**: All 12 Atrea AI states are now wired in the Rust runtime. Behavior states (Patrol, Wander, Investigating, Follow) are driven by `npc_ai_tick`; terminal states (Despawning, Submit, Error) are reachable via the `SetNpcAiState` content action. Implementation status detail is in the [summary table](#implementation-status-summary) at the bottom; the historical "Python design" sections below are kept for reference but no longer reflect the runtime.\r\n\r\n## Overview\r\n\r\nNPC mob behavior is driven by a state machine implemented in the Rust cell service (`crates/cell-combat/src/cell/service/npc_ai/`). The runtime mirrors the Python `SGWMob` design — every 2 seconds the `npc_ai_tick` snapshot-and-dispatch loop routes each NPC into a per-state handler. Threat events preempt behavior states into `Fighting` with per-state scratch preserved.\r\n\r\nThe Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.\r\n\r\n**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/cell-combat/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `fight_target.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash/` (policy, walk home, reset), `lifecycle.rs`, `ability_select.rs`), `crates/cell-combat/src/cell/combat/threat/` (`generate_threat` preemption and the leash evade, the default `LEASH_DISTANCE` in `aggro.rs`, the player-side drain in `player_combat.rs`), `crates/cell/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/cell-cover/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.\r\n\r\n---\r\n\r\n## AI State Machine\r\n\r\n### State Definitions\r\n\r\nDefined in `deprecated/python/Atrea/enums.py` lines 228-239.\r\n\r\n| State | Value | Implemented | Notes |\r\n|-------|-------|-------------|-------|\r\n| `AI_STATE_Spawning` | 0 | INERT | Variant preserved for source-enum completeness but the Rust runtime starts every NPC at Idle and never enters this state. Future spawn-VFX hooks (Goa'uld ribbon-device reveal, etc.) can plug in here. |\r\n| `AI_STATE_Idle` | 1 | DONE | Waits for threat or AI tick promotion into Patrol / Wander / auto-aggro. |\r\n| `AI_STATE_Investigating` | 2 | DONE | `npc_ai_investigate` — pathfind to `poi`, dwell 5 s on arrival, return to Idle. Reached via `SetNpcPoi` content action. |\r\n| `AI_STATE_Fighting` | 3 | DONE | Target selection, ability selection, fire. Per-ability range gating + retry-on-launch-failure (see [#329](https://github.com/SandboxServers/Cimmeria/issues/329)). |\r\n| `AI_STATE_Leashing` | 4 | DONE | The NPC walks home on the navmesh, evading, then heals and resets. Entered when the NPC itself goes past its leash radius or loses its last target. See [Leash and reset](#leash-and-reset-na12). |\r\n| `AI_STATE_Dead` | 5 | DONE | Set on death via `combat::mark_npc_dead`. `npc_respawn_tick` (1 Hz) promotes back to Idle when `respawn_at` elapses. |\r\n| `AI_STATE_Despawning` | 6 | DONE | `npc_ai_despawn` removes the entity from the space. Reached via `SetNpcAiState`. |\r\n| `AI_STATE_Follow` | 7 | DONE | `npc_ai_follow` maintains distance band `[follow_min_distance, follow_max_distance]` to a target. Reached via `SetFollowTarget`. |\r\n| `AI_STATE_Patrol` | 8 | DONE | `npc_ai_patrol` walks a loop from `entity_templates.patrol_path_id` → `point_set_points`, dwells on arrival at each waypoint. Threat preemption preserves the index. |\r\n| `AI_STATE_Wander` | 9 | DONE | `npc_ai_wander` samples random points within `wander_radius` of spawn, dwells for `[wander_min_dwell_secs, wander_max_dwell_secs]` between hops. |\r\n| `AI_STATE_Submit` | 10 | DONE | `npc_ai_submit` clears combat state and holds. Reached via `SetNpcAiState`. |\r\n| `AI_STATE_Error` | 11 | DONE | `npc_ai_error` is quiescent — diagnostic fallback. Reached via `SetNpcAiState` or the `enterErrorAIState` slash command. |\r\n\r\n### State Transitions\r\n\r\n`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). It never preempts a Leashing NPC (the evade) or a `being` (class 0x01: props and story actors such as Col Marsh), which takes no threat at all (NA42). Idle promotion priority is **proximity aggro > patrol > wander**: a hostile NPC scans first and falls through when nobody qualifies (NA13).\r\n\r\n```\r\nIdle      -->  Fighting    (generate_threat fires + NPC was Idle / Patrol / Wander / Investigating / Follow)\r\nIdle      -->  Patrol      (npc_ai_tick observes patrol_path non-empty)\r\nIdle      -->  Wander      (npc_ai_tick observes wander_radius > 0 and no patrol_path)\r\nIdle      -->  Investigating (SetNpcPoi content action)\r\nIdle      -->  Follow      (SetFollowTarget content action with a valid target)\r\nFighting  -->  Leashing    (the NPC is past its leash radius from spawn: leash_out)\r\nFighting  -->  Leashing    (last target dead / gone / out of AoI for 5 s: target_lost;\r\n                            threat list already empty: threat_empty)\r\nLeashing  -->  Idle        (walked home: leash_arrived; no route or 20 s timeout: leash_snap_fallback)\r\nLeashing  -->  Follow      (a follower reset in place whose leader is still in the space: follow_resumed, NA42)\r\nAny alive -->  Follow      (a pet, every turn it is not fighting: pet_follow; a pet's fight ends here,\r\n                            never in Leashing)\r\nFollow    -->  Fighting    (a pet's stance engages a target: pet_engage)\r\nAny alive -->  Dead        (HP -> 0; combat::mark_npc_dead)\r\nDead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)\r\nAny alive -->  Despawning / Submit / Error  (SetNpcAiState content action)\r\n```\r\n\r\n### Tick Loop\r\n\r\n`doAiAction()` is the main AI tick, called on a recurring timer:\r\n\r\n```python\r\ndef doAiAction(self):\r\n    if self.isDead():\r\n        return\r\n    state = self.AIState\r\n    if state == AI_STATE_Spawning:\r\n        self.doAiSpawnAction()\r\n    elif state == AI_STATE_Idle:\r\n        self.doAiIdleAction()\r\n    elif state == AI_STATE_Fighting:\r\n        self.doAiFightingAction()\r\n    # All other states fall through without action\r\n```\r\n\r\n---\r\n\r\n## Threat System\r\n\r\n### Data Structure\r\n\r\nThreat is stored as a plain dict on the mob instance:\r\n\r\n```python\r\nself.threat = {}  # entityId (int) -> accumulated threat (float)\r\n```\r\n\r\n### Damage-to-Threat Conversion\r\n\r\n```python\r\n# In onStatChange() or equivalent damage handler:\r\nthreat = -healthChange * 2 - focusChange\r\nself.threatGenerated(attackerEntityId, threat)\r\n```\r\n\r\nHealth damage is weighted 2x relative to focus damage. The formula is negated because `healthChange` is negative when damage is dealt.\r\n\r\n### Threat Accumulation\r\n\r\n```python\r\ndef threatGenerated(self, entityId, threat):\r\n    if entityId not in self.threat:\r\n        self.threat[entityId] = 0.0\r\n    self.threat[entityId] += threat\r\n    if self.AIState == AI_STATE_Idle and not self.isDead():\r\n        self.AIState = AI_STATE_Fighting\r\n```\r\n\r\n### Target Selection\r\n\r\n`getTopThreateningEntity()` does a linear scan of the threat dict:\r\n\r\n1. Iterates all entries in `self.threat`.\r\n2. Prunes entries where the entity is dead (`entity.isDead()` or entity no longer exists in AoI).\r\n3. Returns the entity ID with the highest accumulated threat value.\r\n4. Returns `None` if the list is empty after pruning, which triggers a transition back to Idle.\r\n\r\n**Known issues:**\r\n- Entity ID recycling: a dead entity's ID may be reused by a new entity, which would falsely inherit threat.\r\n- Distance, line-of-sight, and cover are not factored into target selection.\r\n- No threat decay over time.\r\n\r\n### Unimplemented Threat Methods\r\n\r\nDeclared on `SGWMob` but contain no logic: `addDirectToThreatList`, `addBuffToThreatList`, `addHealToThreatList`, `addToThreatList`, `removeFromThreatList`, `onGroupMateEnteredCombat`, `onGroupMateThreatTransfer`.\r\n\r\n---\r\n\r\n## Aggression System\r\n\r\n### Aggression Levels\r\n\r\n`EMobAggressionLevel` (`entities/defs/enumerations.xml`). Low is hostile.\r\n\r\n| Level | Value | Meaning in the Rust server |\r\n|-------|-------|---------|\r\n| `HOSTILE` | 1 | Attacks on sight: the only level the Idle proximity scan acts on |\r\n| `SUSPICIOUS` | 2 | Not aggressive on sight |\r\n| `NEUTRAL` | 3 | Fights back only when attacked |\r\n| `FRIENDLY` | 4 | Not aggressive on sight |\r\n| `DEFAULT` | 5 | Not aggressive on sight (python compared the stored level against NEUTRAL) |\r\n\r\n### Effective aggression (NA13, D-NA01)\r\n\r\nAn NPC's aggression toward players is its **override** when one is set, otherwise the **faction reaction** of the player's faction toward the NPC's faction. This is python's `SGWPlayer.getAggressionLevel`.\r\n\r\n- **Override.** `CellEntity::aggro.override_level` (python `aggressionOverride`). It is seeded from `spawnlist.aggression_override` (1-5, CHECK-constrained) and changed at runtime by the `set_aggression` content action, the `spawn_entity` action's `aggression` parameter, the GM `.aggression` command, and the surrender path (NEUTRAL). Content levels keep their pre-NA13 numbers: `1` was "aggressive" and is HOSTILE; `0` was "passive" and maps to NEUTRAL.\r\n- **Faction reaction.** `FACTION_REACTION_TABLE` (44 x 44) in `enumerations.xml`, identical to `deprecated/python/Atrea/enums.py`, is ported as a constant table in `crates/cell-world/src/cell/combat/faction_reaction.rs`. A unit test re-parses the XML so the two cannot drift. It is a code constant rather than a seed table because it is engine data the client ships, not per-zone content, and the scan reads it every tick. Players react as faction **3** (`Praxis`), the faction every client is told on world entry (`mercury::aoi::PLAYER_FACTION`). A player's server-side `CellEntity::faction` stays 0, which the `faction == 10` damage and right-click gates rely on.\r\n\r\nIn the seeds, faction 10 (`Straegis`: the NID guards and PRUs) reads HOSTILE, factions 1 and 3 read FRIENDLY, and NULL or 0 reads NEUTRAL.\r\n\r\n### Proximity aggro scan\r\n\r\n`npc_ai_tick` admits an Idle NPC when it is hostile to players, fights NPCs ([NPC-vs-NPC combat](#npc-vs-npc-combat-1009)), has a patrol path, or has a wander radius. A hostile Idle NPC runs `npc_ai_idle_auto_aggro` every AI tick (about 2 s) over its AoI witnesses. A witness becomes a candidate only when every gate in `npc_ai/aggro_gates.rs` passes, in this order:\r\n\r\n| Gate | Reject reason |\r\n|---|---|\r\n| Is a player | `not_player` |\r\n| Alive | `dead` |\r\n| Not on the NPC's server-side faction | `same_faction` |\r\n| The NPC's effective aggression toward it is HOSTILE | `not_hostile` |\r\n| Not a GM with `.aggro off` set | `gm_ignored` |\r\n| Height difference `abs(dy) <= 4` u (`AGGRO_VERTICAL_BAND`) | `out_of_vertical_band` |\r\n| Horizontal distance within `entity_templates.aggro_radius` (NULL: 18 u, `DEFAULT_AGGRO_RADIUS`) | `out_of_radius` |\r\n| Navmesh line of sight is `Clear` | `no_los` |\r\n\r\nThe closest candidate gets a 1.0 threat seed (`cause=proximity`). During the NA12 post-reset window every witness is rejected with `post_reset_suppressed`. Rejects are logged as `npc_ai.aggro_scan event=candidate_rejected` with the `reason` above, sampled per NPC and player (NA02).\r\n\r\n**Line of sight fails closed for aggro (D-NA08).** An `Unknown` answer, meaning an endpoint the navmesh does not cover, rejects the candidate. The attack check in the fight keeps failing open, so an NPC already fighting does not stop shooting over a mesh hole. A space with no navmesh has nothing to check and passes; there the vertical band is the only storey guard. The navmesh ray cannot see floors or ceilings (audit S15), so the band is also what stops a guard under a ramp from seeing a player on it.\r\n\r\n**A guard in cover looks from its peek point (NA23, D-NA12).** An NPC standing at the cover slot it holds, which a guard authored in cover does from spawn, casts the ray from the slot's peek point past its prop, and sees the candidate when that ray or its own is clear. Its own ray alone hits the prop, a navmesh hole, within half a metre: at UAT-1 `Hallway01_Guard` rejected a player 8.1 u in front of its counter as `no_los`. The assist check uses the same rule. See [architecture/cover-system.md decision 9](../architecture/cover-system.md#9-the-peek-point-na23-d-na12).\r\n\r\nIf the scan finds nobody, a hostile NPC that also has a patrol path or wander radius falls through to it, so faction-derived hostility does not freeze a patroller. A patrolling or wandering NPC does not scan until it is Idle again.\r\n\r\n### Same-room assist (NA14, D-NA04)\r\n\r\n**A marked deviation from legacy.** The 2009 server had no assist: a mob only took threat from its own attackers, so shooting one of two guards standing side by side left the other watching. The owner approved same-room assist because that reads as broken AI.\r\n\r\nWhen an NPC enters Fighting from damage (`cause=damage`) or proximity aggro (`cause=proximity`), `combat::generate_threat` calls `npc_ai::recruit_assisters` (`npc_ai/assist.rs`). Every NPC in the victim's space on the victim's server-side faction and within twice its own assist radius is considered, and joins only when every gate passes, in this order:\r\n\r\n| Gate | Reject reason |\r\n|---|---|\r\n| Alive | `dead` |\r\n| Idle, patrolling or wandering. Fighting, Leashing, Investigating and Follow NPCs are never pulled | `not_idle` |\r\n| Itself HOSTILE to players (override, else faction reaction) | `not_hostile` |\r\n| Not inside its NA12 post-reset window | `post_reset_suppressed` |\r\n| The target is not a GM with `.aggro off` set | `gm_ignored` |\r\n| Height difference to the victim `abs(dy) <= 4` u | `out_of_vertical_band` |\r\n| Horizontal distance to the victim within its own `entity_templates.assist_radius` (NULL: 10 u, `DEFAULT_ASSIST_RADIUS`) | `out_of_radius` |\r\n| Navmesh line of sight from it to the victim is `Clear` (`Unknown` fails closed where a mesh exists, as for aggro) | `no_los` |\r\n\r\nA joining NPC takes a 1.0 threat seed on the victim's target and enters Fighting with `cause=assist` (transition `reason=assist`). Only a live player target recruits.\r\n\r\n- **No chaining.** An assister enters Fighting with `cause=assist`, which does not recruit, so a fight never ripples from room to room: in a line of three guards 7 u apart, shooting the first pulls the second but not the third.\r\n- **Content threat does not recruit.** A chain's `generate_threat` keeps a scripted fight exactly as scripted.\r\n- **Chain-armed spawns are safe.** Spawns 10 and 20 are seeded NEUTRAL (below), so they fail `not_hostile` and wait for their chain.\r\n- In Castle Cellblock the MessHall guards (spawns 28 and 29, 7.2 u apart, same room) assist each other. The NID Guard template (24) seeds `assist_radius = 26` (D-NA09 UAT tuning, colo 2026-09-26): the three Barracks guards (spawns 25, 26 and 36) stand 13.1, 19.3 and 25.0 u apart in one room, and at the 10 u default a shot barracks guard rallied nobody. The upper-hallway guards now sit inside each other's radius (18.6 u and 20.5 u) but the corridor walls block their line of sight, so they still do not assist (`tests/npc_ai/assist_barracks.rs`).\r\n- In Castle (world 8) the population guard templates 181-186 seed `assist_radius = 12` and `aggro_radius` 15 u (inside, 181-183) or 20 u (outside, 184-186). Each post keeps its members within 12 u of a neighbour and at least 12 u from any other group, so a shot guard rallies its own post only; the Interrogation Block pair is deliberately 5-6 u from Romney. See the [castle-population ledger](../analysis/castle-population/README.md#decisions) (D-CP04).\r\n\r\nTelemetry: the join is `npc_ai.aggro event=acquired cause=assist` (counter `npc_ai_aggro_total{cause="assist"}`), plus a DEBUG `npc_ai.aggro_scan event=assist_joined` that names the `victim_id`. A considered neighbour that was passed over logs `npc_ai.aggro_scan event=assist_rejected` with the `reason` above, sampled per assister and victim.\r\n\r\n### NPC-vs-NPC combat (#1009)\r\n\r\nNPCs fight each other when their factions say so. The 44 x 44 faction reaction table (above) always had NPC-versus-NPC rows; before #1009 nothing read it with an NPC as the viewer, so friendly NPCs (Op-CORE marines, Praxis Jaffa) could not hold a line against NID guards.\r\n\r\n**Who fights whom.** NPC `A` may take NPC `B` as a target when `REACTION[A.faction][B.faction]` is HOSTILE (`combat::npc_may_target_npc`). Both must be SGWMob NPCs: players, pets and beings (props, Col Marsh) never take part. The table is asymmetric and is read as written. In today's seeds that means faction 10 (`Straegis`, the NID guards) and faction 3 (`Praxis`) fight each other, and faction 1 (`World Object`, every friendly placed before #1009) is FRIENDLY in every row, so it never fights. The aggression override only narrows this: a non-HOSTILE override (a chain-disarmed guard, a surrendered NPC, `set_aggression 0`) keeps the NPC out of NPC fights too, and a HOSTILE override does not turn an NPC on NPCs its faction does not fight. A static-spawn survey at the time of #1009 found no hostile NPC pair within aggro range anywhere in the seed, so nothing changed until the Castle standoff was moved into range.\r\n\r\n**Admission and scan.** An Idle NPC whose faction has an NPC enemy (`combat::seeks_npc_targets`) is ticked, and its Idle scan (`npc_ai_idle_auto_aggro`) also looks at the NPCs around it:\r\n\r\n- **Spatially bounded.** Candidates come from the space's `WorldGrid` (`SpaceManager::npc_ids_near`, 50 u cells) within twice the NPC's aggro radius, never from a sweep of the space, so a crowded world does not make the tick O(n^2). The guard is `tests/npc_ai/npc_vs_npc_budget.rs::the_npc_scan_is_a_bounded_grid_query`.\r\n- **Only while watched.** The NPC scan runs only when some player has the scanning NPC in their AoI. An NPC fight nobody can see is not started, so a standoff in an empty zone costs nothing but its idle ticks; a fight already under way carries on without a witness until it ends.\r\n- **Gates** (`aggro_gates::evaluate_npc_candidate`), in order: a HOSTILE NPC combatant (anything else is not a candidate and logs nothing), alive (`dead`), not walking home (`target_evading`, the NA12 evade), not surrendered, despawning, spawning or in the error state (`target_unavailable`), then the same room as for players: `abs(dy) <= 4` u, inside the scanner's aggro radius, and line of sight (`out_of_vertical_band`, `out_of_radius`, `no_los`).\r\n- **Pick.** The closest survivor of the player scan and the NPC scan wins; a tie goes to the player. It gets the same 1.0 threat seed with `cause=proximity`. The NA12 post-reset window suppresses NPC targets too.\r\n\r\n**Fighting.** Nothing is special once the NPC is Fighting: threat, target selection, the three-bucket ability pick, cover, chase, the leash and the walk home are the ones used against players, keyed by entity id. A shot NPC takes threat on its NPC attacker through `combat::generate_threat` and fights back, and a threat table can hold players and NPCs together; the top threat wins. An NPC fight puts no player in combat. Same-room assist (NA14) stays player-only: an NPC-on-NPC engagement recruits nobody, so a standoff does not ripple.\r\n\r\n**Deaths.** An NPC that dies to anyone leaves every other NPC's threat list at the moment of death (`npc_ai::purge_dead_target_from_threat`, the NA24 purge extended from players to NPCs), and each NPC whose list runs dry starts home. An NPC killed by another NPC's turn gets no turn of its own in that tick: the dispatcher re-reads each NPC's state before its turn and skips a corpse, and runs the state an NPC is in now rather than the one it had when the tick began (logged as `npc_ai event=state_changed_mid_tick` at DEBUG). Before, a corpse ran a Fighting turn, found its cleared threat list and walked home, from Dead to Leashing. Respawn and one-shot rules are unchanged. Credit stays with the killing blow: an NPC-only kill (the killer is a plain NPC, not a pet) rolls no loot, pays no XP and fires no `EntityDeath`, so no kill objective moves ([abilities ADR decision 32](../architecture/abilities-and-effects-decisions-23-33.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)). A player's own kills pay as always.\r\n\r\n**No-witness warnings need a player present (DA-F2).** NPCs fighting with nobody in AoI drop every method they send by design: there is no client to draw it. The two "nobody saw it" WARNs on the NPC path, `abilities.wire event=wire_npc_no_witnesses` (an NPC's `onStatUpdate`, `onStateFieldUpdate` or property update with no witness) and `abilities.sequence outcome=no_witnesses` (an NPC's attack `onSequence` with no witness), are therefore written only when a player is present. One rule decides it, `SpaceManager::player_present(entity, counterpart)` in `cell-world` (`space_manager/player_presence.rs`). Both WARNs fire only once the witness list came back empty. A player is present when:\r\n\r\n- **In range.** A player in the NPC's space has the NPC within that player's AoI radius. The counterpart's range is deliberately not tested: the empty witness list is the shooter's, and a player who sees only the target (the Debug Area arena, colo 2026-10-05, a player 145 m from the guards and past 150 m from the shooting Soldier) cannot see the shooter. This is the fault the WARN exists for: a player stands in range, but the witness list says nobody sees the NPC (a stale or broken witness set, the unrendered guard of #838). It walks `Space::players`, the set `get_witnesses_of` has just walked.\r\n- **Involved.** The NPC itself, the counterpart, or anyone on the NPC's threat list is player side: a player or something a player owns, a pet (it counts as its owner), a deployable or a GM's lab dummy. This covers a player fighting the NPC from beyond their own AoI.\r\n\r\nWith no player present the drop writes nothing at any level, and no counter is bumped. Owner decision, 2026-10-05: "NPC vs NPC warnings without players present can just go to null. Agree that if issue is happening with player present throw warning." It came from the Debug Area arena's first 30 minutes on the colo, which wrote about 55 such WARNs without a fault among them. Guards: `messaging::tests::an_npc_only_fight_nobody_watches_writes_no_witness_warn`, `an_unseen_npc_a_player_is_fighting_still_warns` and `a_player_in_range_with_a_stale_witness_set_still_warns`; `use_ability::tests::sequence::an_npc_shooting_an_npc_with_no_player_near_writes_nothing` and `an_npc_shooting_an_npc_beside_a_player_with_a_stale_witness_set_warns`, `an_npc_shooting_a_target_a_player_sees_from_beyond_its_own_aoi_writes_nothing`, beside the player-target `an_npc_attack_nobody_can_see_warns_no_witnesses`; the rule's unit tests in `player_presence::tests` (in range, in range of the counterpart only, involved, pet, deployable and lab dummy).\r\n\r\n**Telemetry.** The acquisition is `npc_ai.aggro event=acquired` with `target_kind` (`player` or `npc`), `target_tag`, `npc_faction` and `target_faction`. A HOSTILE NPC the scan refused logs `npc_ai.aggro_scan event=npc_candidate_rejected` (DEBUG, sampled per pair and reason) with both ids and factions and the `reason` above. An NPC-only kill logs `loot.drop event=skipped reason=npc_only_kill` (INFO). See [negative-logging-convention.md](../architecture/negative-logging-convention.md#npc-vs-npc-target-refusals-and-npc-only-kills-1009).\r\n\r\n**Client.** No new wire: an NPC's shot at an NPC is the same `onEffectResults` (sent to the attacker's witnesses), `onStatUpdate` and death burst as a shot at a player or a pet's shot at a mob. Whether the client draws an NPC-sourced hit on a non-player target has not been seen in-client; it is a UAT item (`CP19` in the [unified UAT guide](../guides/unified-uat.md#castle-population)).\r\n\r\n### Chain-armed spawns (D-NA01a)\r\n\r\nA spawn whose fight a content chain must start carries `aggression_override = 3` (NEUTRAL), and the chain runs `set_aggression 1` plus `generate_threat`:\r\n\r\n| Spawn | Tag | Chain |\r\n|---|---|---|\r\n| 20 | `ArmYourself_NIDGuard` | 1008 (enter `Castle_CellBlock.Region8`) |\r\n| 10 | `ArmYourself_PrisonerRetrievalUnit` | 1032 (Ambernol vial interaction) |\r\n\r\nNo other Castle (world 8) or Harset seed calls `set_aggression`, so no other spawn needs the override. Every other faction-10 spawn now aggroes on sight within its radius: the Cellblock and Castle NID guards and PRUs, `Castle_Romney`, `Castle_Muelbach`, the Castle Bravo officers, and the SGC_W1 Ba'al Jaffa.\r\n\r\n### GM switch: `.aggro on|off` (D-NA02)\r\n\r\nMobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro and assist: damage and content threat still engage a GM, but the mob a GM shoots does not pull its neighbours in (NA14). It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.\r\n\r\n### Wire: broadcast to witnesses (NA33, D-NA16)\r\n\r\nPython's `setAggression` sent `onEntityProperty(GENERICPROPERTY_MobAggression = 6, level)` to the owner and witnesses, but no client handler for property type 6 was ever found — that call was dead on arrival in 2009. `createOnClient` separately sent `onAggressionOverrideUpdate(level)`, once, only when an override was already set at spawn/reconnect time, to the ClientMethod the client handler at `0x00d31bd0` actually reads (stores the INT8 `aAggressionLevel` at `GameMob + 0x16c`; registered through `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>`, paired with an `onAggressionOverrideCleared` handler `0x00d31cd0` never called from legacy python at all).\r\n\r\nNA33 confirmed the SGWMob flat index (27 for Update, 28 for Cleared — `Lootable` contributes no client methods, so SGWMob's own two begin right after the shared SGWSpawnableEntity/SGWBeing 0-26 prefix) and wired the server to use the ClientMethod, not the dead property, on every path:\r\n\r\n- **Runtime change** (content `set_aggression` action, GM `.aggression` command, the surrender/`npc_ai_submit` disarm): broadcasts `onAggressionOverrideUpdate(level)` to every witness, or `onAggressionOverrideCleared` when the override is cleared. This is a deliberate divergence from legacy's literal wire call — see [findings/npc-aggression-broadcast.md](../reverse-engineering/findings/npc-aggression-broadcast.md) for why finishing `createOnClient`'s intent (not `setAggression`'s dead one) is correct and needs no client patch.\r\n- **AoI entry**: replays `onAggressionOverrideUpdate` to a newly-arrived witness when an override is active, mirroring `createOnClient`'s conditional send exactly (a faction-derived, no-override mob still sends nothing).\r\n\r\nIt remains a display value only: the client derives friend or foe from the faction it is sent, and the aggression level's exact on-screen effect (nameplate color, reticle color, or an interaction verb — `UIAggressionLevel` is registered as a Lua-scriptable enum type alongside `UIArchetype`/`TargetType`/etc.) was not directly observed, since no client Lua source is present in this tree.\r\n\r\n### Timed Overrides\r\n\r\n```python\r\ndef overrideAggression(self, level, entityBase, seconds):\r\n    # Sets aggressionOverride, schedules revert after `seconds`\r\n```\r\n\r\nThis let scripted events change a mob's stance for a while (for example, a friendly NPC turned hostile during a mission encounter) and revert it afterwards. Not ported.\r\n\r\n---\r\n\r\n## Ability Selection (Combat AI)\r\n\r\n### Combat profile and the Pistol Shot placeholder\r\n\r\n`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves\r\nwhich abilities a spawned NPC gets. Spawning and the AI share the rule: an\r\nexplicit `ability_ids` set always wins, and an empty set takes the placeholder\r\nthat the policy allows.\r\n\r\n| `ability_ids` | Policy | Components | Abilities | Source |\r\n|---|---|---|---|---|\r\n| non-empty | any | any | the set, in order | `ExplicitSet` |\r\n| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |\r\n| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |\r\n| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |\r\n\r\n592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set\r\n(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human\r\nfirearm. Production runs `PLACEHOLDER_POLICY = Legacy`, so behaviour is\r\nunchanged. Decision D-NC1 is pending: if it is taken, NC-30 flips the policy,\r\nso only a human with a `WP-Human.*` component keeps 592 and an NPC with no\r\nability set idles.\r\n\r\nTwo diagnostics log on target `npc.combat_profile`, at most once per template\r\nid per process:\r\n\r\n- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.\r\n  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`\r\n  (or `none`), `ability_id`, `ability_name`.\r\n- `combat_profile_unresolved` (WARN): the template has no ability set and no\r\n  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.\r\n\r\nAn explicit set logs nothing. In the AI, an NPC that knows no ability falls\r\nback to `placeholder_ability(policy)`: 592 under `Legacy`, none under\r\n`RequireWeaponEvidence`.\r\n\r\n### Classification\r\n\r\n`classifyHostileAbility(target, ability)` evaluates a single ability and returns one of:\r\n\r\n| Result | Value | Condition |\r\n|--------|-------|-----------|\r\n| `ABILITY_Usable` | 1 | Passes all checks |\r\n| `ABILITY_CoolingDown` | 2 | On cooldown |\r\n| `ABILITY_Filtered` | 3 | Heal, buff, or non-single-target mode |\r\n| `ABILITY_NeedsAmmo` | 4 | No ammo remaining |\r\n\r\nClassification logic in order:\r\n1. **Filter heals and buffs** — Abilities that restore health or apply positive effects to self are excluded.\r\n2. **Require single-target mode** — Only `TCM_Single` targeting mode is accepted. AoE and cone abilities return `ABILITY_Filtered`.\r\n3. **Check cooldown** — If the ability's cooldown timer is active, returns `ABILITY_CoolingDown`.\r\n4. **Check ammo** — If the ability requires ammo and the mob has none, returns `ABILITY_NeedsAmmo`.\r\n\r\n### Selection Loop\r\n\r\n`selectHostileAbility(target)` iterates the mob's ability set:\r\n\r\n```python\r\ndef selectHostileAbility(self, target):\r\n    needs_ammo = []\r\n    for ability in self.getAbilities():\r\n        result = self.classifyHostileAbility(target, ability)\r\n        if result == ABILITY_Usable:\r\n            return ability       # First usable ability wins\r\n        elif result == ABILITY_NeedsAmmo:\r\n            needs_ammo.append(ability)\r\n    if needs_ammo:\r\n        self.triggerReload()    # All blocked by ammo: reload\r\n    return None\r\n```\r\n\r\nThere is no priority weighting — the first usable ability in iteration order is selected. No distance checks, no cooldown preference, no situational logic (e.g., prefer ranged when target is far).\r\n\r\n### Rust: reach-filtered selection\r\n\r\nThe Rust selector lives in `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs`\r\nand diverges from the loop above in two ways.\r\n\r\n**Deterministic order.** `choose_npc_ability` sorts the known ability ids\r\nascending and takes the first one off cooldown. The original returned\r\n`usable[0]` out of a CPython 2 dict, so its order was a hash artefact; the\r\noriginal developers left `# TODO: Which ability should we use? Use some\r\nweighting/rand here.` directly above that line, so lowest-id is a Cimmeria\r\nconvention rather than a divergence from a contract. The practical\r\nconsequence for a content author is that **the lowest-id member of an\r\nability set is the NPC's primary attack** and the rest are cooldown\r\nfallbacks.\r\n\r\n**A distance gate the original never had.** `classifyHostileAbility` carries\r\nthe literal comment `# TODO: Check distance, LOS` above its\r\n`return ABILITY_Usable`. `choose_npc_ability_within_reach` is that TODO:\r\n\r\n- An `is_ranged = false` ability is only selectable when the target is\r\n  inside `NPC_MELEE_RANGE` (3 m). Without the gate a melee auto-attack\r\n  resolves to the 30 m ranged default, because `abilities.max_range` is the\r\n  `0` "use the server default" sentinel on every auto-attack in the seed and\r\n  `is_ranged` is otherwise read only by `calculate_qr` to pick the\r\n  accuracy/defence branch. The visible defect is an NPC playing a staff or\r\n  ribbon *swing* at a target thirty metres away.\r\n- When nothing is in reach it falls back to the unfiltered pick rather than\r\n  returning `None`. `None` is the caller's "all cooling, hold fire" signal,\r\n  so returning it would freeze a melee-only NPC at distance. Handing back\r\n  the out-of-reach ability lets `ability_ranges` report its real 3 m\r\n  `max_range`, and the fight tick's existing out-of-range arm then does the\r\n  right thing: a mobile NPC chases and swings once it arrives, a stationary\r\n  one lands in `stationary_holds` and turns to face its target.\r\n\r\n**Melee first inside reach (NC-20).** Inside `NPC_MELEE_RANGE` an NPC that is not a pet takes an off-cooldown melee ability before any ranged one, whatever the ids. A Jaffa at 2 m therefore swings the staff melee (710) rather than 584, and a Goa'uld (set 5) at 2 m swings 711. Beyond 3 m the ranged half is picked as before. Pets (D-NC4) keep the lowest-id walk.\r\n\r\n`NPC_MELEE_RANGE` is derived from the weapon table rather than invented.\r\n`resources.items` carries `min_melee_range` / `max_melee_range` alongside\r\nthe ranged pair; across every item binding an `EVENT_ITEM_MELEE` ability the\r\nmelee maximum is 0, 2 or 3, so 3 is the largest reach any shipped weapon\r\nexpresses. `NPC_ATTACK_RANGE` (30) is the same table's dominant\r\n`max_ranged_range`. Both constants live in\r\n`crates/cell-combat/src/cell/combat/threat/aggro.rs`.\r\n\r\nNot ported: the `ABILITY_Filtered` pre-pass. Cimmeria's selector does not\r\nreject heals, buffs or non-`TCM_Single` abilities before partitioning. That\r\nis inert while every NPC ability set holds only single-target hostile\r\nauto-attacks, but it is a live hazard for the first content author who puts\r\na self-buff or an AoE into a mob set.\r\n\r\n### Combat Tick\r\n\r\n`doAiFightingAction()` runs each combat tick:\r\n\r\n1. Call `getTopThreateningEntity()`. If `None`, set `AIState = AI_STATE_Idle` and return.\r\n2. Call `lookAt(target)` to rotate the mob toward the target.\r\n3. Call `selectHostileAbility(target)`. If an ability is returned, launch it.\r\n4. If no ability is available (all on cooldown or no ammo), schedule a 0.5-second retry.\r\n\r\n---\r\n\r\n## Ammo Management\r\n\r\nMobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/cell-combat/src/cell/abilities/mod.rs:259-263`](../../crates/cell-combat/src/cell/abilities/mod.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.\r\n\r\nLegacy accessors and their Rust equivalents:\r\n\r\n| Legacy (`SGWMob.py` / `SGWPlayer.py`) | Rust equivalent |\r\n|----------------------------------------|-----------------|\r\n| `getAmmoStat()` — stat ID for current slot | `crate::stats::AMMO_SLOT_1 + entity.active_bandolier_slot` |\r\n| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity/bandolier.rs#L19) |\r\n| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L12) |\r\n| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity/bandolier.rs#L36) |\r\n| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/cell-combat/src/cell/cell_methods/player/world/reload.rs#L71)) |\r\n\r\nLegacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.\r\n\r\nIf/when NPC reload is needed, the same machinery applies — but **all three** of the following are required together; partial work will silently leave NPCs stuck mid-reload:\r\n\r\n1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs)).\r\n2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).\r\n3. **Widen `reload_completion_tick`** ([`ticks/reload_completion.rs:24`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L24)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.\r\n\r\nSee [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.\r\n\r\n---\r\n\r\n## Tapping System (Kill Credit)\r\n\r\nThese properties are defined in `SGWMob.def` but have no Python implementation:\r\n\r\n| Property | Type | Purpose |\r\n|----------|------|---------|\r\n| `tappedEntity` | INT32 | Entity ID with loot and XP rights |\r\n| `tappedSquad` | INT32 | Squad ID with loot and XP rights |\r\n| `tappedSquadMembers` | ARRAY<INT32> | Individual members of the tapped squad |\r\n\r\nTapping determines who receives loot drops and XP when the mob dies. Currently, loot generation on death runs without any tap check — all loot goes to whoever triggered the death event.\r\n\r\nSince NPC-vs-NPC combat (#1009) a kill whose killer is a plain NPC rolls no loot at all, and pays no XP or mission credit: see [NPC-vs-NPC combat](#npc-vs-npc-combat-1009).\r\n\r\n---\r\n\r\n## Mob Properties Reference\r\n\r\nKey properties from `SGWMob.def` (55 total), grouped by subsystem:\r\n\r\n**Controller IDs** (C++ controller handles, stored as INT32):\r\n`navControllerID`, `visionID`, `yawID`, `behaviorTimerID`, `despawnTimerID`, `investigateTimerID`, `grenadeDetectorID`, `trackControllerID`, `targetOverrideTimer`\r\n\r\n**AI State:**\r\n`AIState`, `POI` (VECTOR3 — investigate destination), `Home` (VECTOR3 — spawn/leash anchor), `lastNavigate`, `stateLock`, `stateChanges`, `stateHistory`, `disableBehaviorSystem`, `nextWanderTime`\r\n\r\n**Combat:**\r\n`MyAbilitySetID`, `LootTableID`, `Aggression`, `minIdealRange`, `maxIdealRange`, `isKillable`, `isTrackable`, `isWorthXP`\r\n\r\n**Cover:**\r\n`bCoverFromTarget`, `useCover`, `reservedCoverNode`, `CombatStance`\r\n\r\n**Following:**\r\n`currentlyFollowing`, `followTarget`, `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType`\r\n\r\n**Patrol:**\r\n`patrolPaths` (dict), `currentPatrolPath`, `patrolMovementType`\r\n\r\n**Hearing:**\r\n`hearingRadius`\r\n\r\n**Despawn:**\r\n`despawnFlag`, `despawnTimerID`, `spawnTime`, `decayTimerID`\r\n\r\n**Behavior Events:**\r\n`mobBehaviorEventSet`\r\n\r\n---\r\n\r\n## Unimplemented States: Reconstruction Notes\r\n\r\n### Leash and reset (NA12)\r\n\r\nImplemented behaviour, decided in D-NA03 (corrected by D-NA10) of the [NPC AI restoration ledger](../analysis/npc-ai-restoration/README.md). Code: `crates/cell-combat/src/cell/service/npc_ai/leash/` and `fight_target.rs`.\r\n\r\n**When an NPC gives up.** The leash is measured on the NPC's own horizontal distance from its spawn, never on the target's. The radius is `entity_templates.leash_distance`, or 50 u when the column is NULL (the seed sets none yet).\r\n\r\n- Beyond the radius plus a 5 u hysteresis band, or more than 20 u above or below its spawn, the NPC always gives up (`trigger` `beyond_band` / `vertical_cap`).\r\n- Inside the band it keeps fighting a target it can already hit. It gives up only if it would have to chase further from home (`chase_outward`).\r\n- A target that dies, disconnects, or stays beyond the NPC's AoI radius for 5 s is dropped. When nobody is left, the NPC goes home (`target_lost`).\r\n- A player who dies leaves every NPC's threat list at the moment of death (`abilities::death::resolve_death` → `purge_dead_target_from_threat`), and a target carrying `BSF_DEAD` counts as dead whatever its HEALTH reads. A dead player cannot `useItem` (answered with `onErrorCode(0, 0, CONDITION_FEEDBACK_NotLiving)`, the legacy `@mustBeAlive` reply), so a medkit in the Defeat Window can no longer revive the killer's interest (NA24).\r\n\r\nThe old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cellblock Guard's spawn bounded every chase, and an aggressive NPC standing at its spawn leashed every 6 s against a player 60 u away (audit S3, S5).\r\n\r\n**On giving up.** The NPC is removed from every player that lists it in `threatened_mobs`, so `BSF_InCombat` clears, the player is sent `onStateFieldUpdate` and regen resumes. Its threat list is cleared, cover is released, and `find_path(npc, spawn)` installs the route home.\r\n\r\n**Walking home.** The movement tick walks the route. The client sees the walk from position and velocity only, because no server-to-client movement-type message exists (D-NA10). While Leashing the NPC evades: `generate_threat` refuses it, so damage adds no threat and does not put the attacker into combat (`npc_ai.leash event=damage_ignored`, DEBUG).\r\n\r\n**Arrival.** Within 1.5 u of spawn with its route finished, the NPC heals to full, faces its authored spawn heading, clears its cooldowns and goes Idle. For 5 s afterwards the Idle auto-aggro scan ignores players.\r\n\r\n**Snap fallback.** When no route can be planned, or the walk takes longer than 20 s, the NPC snaps to spawn through the grid-updating writer and resets the same way (`reason=leash_snap_fallback`). A follower (`follow_target_id` set) is reset where it stands and is not moved. If its leader is still in the space it then goes back to Follow (`reason=follow_resumed`) instead of Idle, and the next AI tick routes it after the leader. If the leader has left, the target is cleared, the NPC goes Idle and `npc_ai.leash event=follow_target_lost` warns (NA42).\r\n\r\n**Telemetry.** The leash reports through NA02's detectors (`npc_ai::detectors::leash`): `npc_ai.leash event=enter` (reason, trigger, `nav_path_len`, `npc_to_spawn`), `event=arrived` / `event=snap_fallback` (`arrival`, `walk_secs`, `snap_dist`), `event=loop` (should stay silent) and `event=damage_ignored`. A leash whose trigger is `target_dead` or `target_gone` is not counted toward `loop` (DA-F2, `detectors::leash::counts_toward_loop`). The NPC won or its target left, and the walk home is how every fight ends. Counted, it made any NPC that killed three targets inside 60 s a "loop": every Debug Area arena fighter wrote the WARN from its first rounds on the colo (v2026-10-05.1), standing at its spawn (`npc_to_spawn` 0). The loop NA12 fixed is a fight given up and restarted against a live target, and those triggers still count. Guards: `detector_tests::leash::leashes_after_kills_are_not_a_loop` and the live-DB arena cycle `debug_area_combat::live_db::live_db_debug_area_arena_fight_cycles_without_a_leash_loop`. The leash itself adds `event=replan` and `event=player_combat_exit`. NA02's `threat event=cleared_without_exit` and `npc_ai.idle_parked` should stay silent through a leash; tests pin both. The fight's `decision_outcome=leashed` row carries `trigger`, `npc_to_spawn` and `target_to_spawn`.\r\n\r\n### Chase and unreachable targets (NA15)\r\n\r\nCode: `crates/cell-combat/src/cell/service/npc_ai/chase/`. The Fighting handler hands a mobile NPC that is out of range or out of line of sight to the chase step.\r\n\r\n**Stop distance.** A chase routes to the target moved `max(ability min_range, 1.0 u)` toward the NPC, capped at the ability's `max_range`. The walk ends short of the target, never inside it. Before NA15 a guard walked to the player's own point and stood 0.35-0.7 u from it (audit S10). A cover slot chosen by the cover step is routed as given.\r\n\r\n**Ranged step-back (NA32, D-NA15).** Code: `npc_ai/step_back.rs`. A mobile NPC attacking in place, not holding a cover slot, whose chosen ability has a `min_range` or whose abilities are all ranged, steps back when its target is closer than its comfort range, `max(min_range, 2 u)`. It walks straight away from the target, horizontally, to the comfort range plus 3 u (5 u for a guard with no `min_range`), slid along the navmesh so a wall or ledge stops it. It steps at most once every 3 s. During the cooldown it fires from where it is, and inside a hard `min_range`, where the ability cannot fire, it holds and faces the target (`decision_outcome=step_back_cooling`). A step still being walked is not cut short by the attack arm (`step_back_walking`). A slide that gains under 0.5 u (its back to a wall) is not taken (`step_back_cornered`), and the cooldown starts anyway. Melee NPCs, NPCs with a melee swing in their set, stationary NPCs and NPCs in cover never step back; a flanked NPC has given its slot up and steps back like any other. The outcome is `step_back`, or `min_range_backup` inside a hard `min_range` (the pre-NA32 label). Before NA32 only a hard `min_range` stepped back, and every seeded NPC ability has `min_range = 0`, so a player could stand in a guard's face. The chase stop distance is unchanged.\r\n\r\n**Repath.** The NPC keeps its route while the goal stays within 5 u horizontally and 1.5 u vertically of the goal the route was planned for (`decision_outcome=hold_no_repath`). A player walking down a ramp toward the NPC changes level quickly and gets a new route. The old test was 5 u in 3D against the last waypoint.\r\n\r\n**Unreachable target.** When the target is on another mesh island, Detour returns a partial route. The NPC walks it to the island edge and then holds there, facing the target with zero velocity, and does not request a new route until the target moves (`decision_outcome=hold_unreachable`). After 8 s of holding it gives up and walks home (`npc_ai.transition reason=unreachable`, `decision_outcome=leashed trigger=unreachable`). A route that reaches the target, or an attack, resets the timer. A partial route *home* is walked to its end, and then the NPC snaps to spawn (`npc_ai.leash arrival=snap_partial_route`).\r\n\r\n**No route for the other movers (NA41).** Follow, patrol, wander and investigate used to push the raw destination as a single waypoint whenever the pathfinder gave them nothing usable, and the NPC walked through walls toward it. On a world with a navmesh they now slide toward the destination across the mesh with Detour's `moveAlongSurface` and walk a route to where the slide stops, a wall or the edge of their own mesh island (`npc_ai.path_fail fallback=surface_clamped`). A slide that gains under 0.5 u is not taken: the NPC stops with zero velocity and holds (`fallback=held_no_route`, `movement.npc event=stop reason=hold_no_route`), and the next AI tick tries again. A follower keeps its target and the Follow state. Only a world with no navmesh still walks the straight line (`fallback=direct_waypoint`). The ranged step-back takes no step, rather than the raw point, when the NPC is off a mesh. Escort consequence: Col Marsh now stops at a navmesh component boundary instead of walking through the wall to reach the player.\r\n\r\n**Facing while holding without a route.** A chaser that stands still because its repath came back degenerate, or because it got no route and has nothing left to walk, turns to face its target on every AI tick, so it tracks a target that moves. An NPC whose final waypoint is the spot it already stands on keeps its yaw instead of turning to due north.\r\n\r\n**Off-mesh start.** When the pathfinder cannot start from where the NPC stands (`no_start_poly`: hovering, sunk or a step off the mesh), the NPC is snapped onto the nearest polygon within 2 u horizontally and Â±4 u vertically, and the route is requested once more (`npc_ai.path event=off_mesh_snap`, `npc_ai.path_fail fallback=snapped_to_mesh`). With no polygon that close it goes home, and the leash tick snaps it to spawn.\r\n\r\n**Off-mesh target.** A target the destination box cannot place (`no_end_poly`, typically a GM standing on unmeshed props, audit S14) is replaced by the nearest on-mesh point within 8 u horizontally and Â±4 u vertically (`fallback=nearest_on_mesh`). The route cannot reach the target, so the NPC holds at its end if it still cannot hit from there.\r\n\r\n**Degenerate repath.** A route that comes back as a single point clears the stale route (`fallback=path_cleared`), and the NPC holds.\r\n\r\n### Investigating (State 2)\r\n\r\nA mob heard a noise or detected suspicious movement but has not confirmed a threat. It should navigate to `POI`, look around for a set duration, and return to `Home` if nothing is found.\r\n\r\nEvidence: `POI` (VECTOR3) property holds the destination, `investigateTimerID` stores a C++ timer controller, `hearingRadius` controls detection range, `onNoise()` is a declared cell method that would set `POI` and transition to this state.\r\n\r\n### Leashing (State 4)\r\n\r\nThe mob's current target has moved beyond pursuit range or out of LOS. The mob abandons the fight and returns to `Home`, clearing its threat list on arrival.\r\n\r\nEvidence: `Home` (VECTOR3) stores the spawn anchor, `maxIdealRange` defines engagement distance. Standard MMO pattern: if distance to Home exceeds `maxIdealRange * 2`, cancel pursuit, navigate Home, clear `self.threat`, transition to Idle.\r\n\r\n### Patrol (State 8)\r\n\r\nThe mob follows a scripted waypoint path between spawn locations.\r\n\r\nEvidence: `patrolPaths` (dict) stores one or more named path definitions, `currentPatrolPath` tracks the active path index, `patrolMovementType` controls speed/animation. DB columns `patrol_path_id` and `patrol_point_delay` in `entity_templates`. C++ methods `startPatrol(path, delay)` and `cancelPatrol()` are declared on the cell entity.\r\n\r\n### Wander (State 9)\r\n\r\nRandom movement within a radius of `Home`. The mob picks a random nearby point, navigates there, waits a random delay, then picks another point.\r\n\r\nEvidence: `Home` property provides the anchor, `nextWanderTime` property stores the timestamp of the next wander move. Recommend: use `findPathTo()` with a randomly offset position from `Home`, bounded by `minIdealRange`.\r\n\r\n### Follow (State 7)\r\n\r\nThe mob maintains a set distance and angle behind a target entity (used by pets and escort NPCs).\r\n\r\nEvidence: `currentlyFollowing` (bool), `followTarget` (entity reference), `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType` properties all defined in `.def`.\r\n\r\n**Runtime: an escort survives a fight (NA42).** A mob in Follow that takes a hit is preempted into Fighting and keeps its `follow_target_id`. When the fight ends, the leash resets it where it stands (it is never walked or snapped home) and returns it to Follow while its leader is still in the space; with the leader gone it clears the target and idles. Before NA42 every leash ended in Idle, which the dispatcher never promotes back to Follow, so one stray hit ended an escort for good; chain 1302 (click Zuritska to re-arm her follow) predates the fix and is now a harmless redundancy. A `being` follower such as Col Marsh never enters combat: `generate_threat` refuses beings, so a hit leaves him in Follow and still walking. None of the 24 seeded `being` templates has an ability set, so no being could have fought back anyway.\r\n\r\n**Pets (PT-05).** A pet (wire class `SGWPet`, an NPC with `PetState`) runs through the same tick with an owner-relative pre-pass ahead of the state match (`npc_ai/pet/`). Out of a fight it is always in Follow on its owner with a 2-5 u band, and it teleports beside the owner when more than 40 u behind or on another floor, at most once every 5 s. Its stance decides what it engages: Passive nothing (`generate_threat` refuses its threat, so even a hit does not engage it), Defensive whatever fights its owner or itself, Aggressive also its owner's target once the owner is in combat and hostile NPCs within 15 u. Its leash is measured from the owner, not `spawn_position`, and a fight ends straight back in Follow: no walk home, no evade, no heal. Its fights put the owner in combat. A pet is never hostile to players, is always ticked when Idle, and skips abilities its owner toggled off. See [pet-system.md](pet-system.md#pet-ai-pt-05).\r\n\r\n### Submit (State 10)\r\n\r\nA controlled shutdown state for mobs that surrender rather than fight to the death (e.g., scripted encounters). The mob stops fighting and signals completion to the mission system before despawning.\r\n\r\nEvidence: state is defined in the enum; no supporting properties are uniquely tied to this state.\r\n\r\n### Error (State 11)\r\n\r\nA diagnostic recovery state for when the AI reaches an inconsistent condition.\r\n\r\nEvidence: Cell methods `enterErrorAIState()` and `leaveErrorAIState()` are declared. Properties `errorStateReason`, `errorStateDescription`, `errorAIState`, and `errorTime` are defined for logging the failure context.\r\n\r\n### Despawning (State 6)\r\n\r\nControlled removal of the mob from the world, distinct from death. Allows animations and cleanup to complete before the entity is destroyed.\r\n\r\nEvidence: `despawnFlag` (bool) property, `despawnTimerID` controller, `DespawnWhenFree()` cell method, `decayTimerID` for corpse removal after death.\r\n\r\n---\r\n\r\n## Navigation Integration\r\n\r\nThe C++ cell layer exposes these navigation methods to Python:\r\n\r\n| Method | Purpose |\r\n|--------|---------|\r\n| `findPathTo(position)` | Compute and begin moving along a navmesh path |\r\n| `findDetailedPathTo(position)` | Higher-fidelity path with full waypoint list |\r\n| `addWaypoint(position)` | Append a waypoint to the current path |\r\n| `cancelMovement()` | Stop all movement immediately |\r\n\r\nNone of these are called by the current Python mob AI. The `navControllerID` property is reserved for a C++ navigation controller that is never created. The only movement primitive used is `lookAt(target)`, which rotates the mob's yaw toward a target entity without translating.\r\n\r\nThe practical result is that all mobs are stationary during combat. They rotate to face their target and fire, but do not close distance, retreat to cover, or reposition.\r\n\r\n### Rust: line of sight in the fight tick\r\n\r\nThe Python mob AI never checked line of sight: `classifyHostileAbility`\r\nsays `# TODO: Check distance, LOS`, and `AbilityManager` says\r\n`# TODO: Do LOS checks on target`. The client still has the feedback codes\r\n`CONDITION_FEEDBACK_LOS = 39` and `CONDITION_FEEDBACK_NoLOS = 40`, and the\r\nGM surface has `testLOS`, `onLOSResult` and `toggleCombatLOS`. So the\r\nshipped server probably did check it.\r\n\r\nIn a world without a `.occ` file, Cimmeria's occlusion source is the\r\nnavmesh raycast (`NavMesh::line_of_sight`), which returns `Clear`,\r\n`Blocked` or `Unknown`. Every shipped client world has one now; see\r\n[collision-geometry line of sight](#rust-collision-geometry-line-of-sight-na27).\r\nIt has no heights for the holes Recast cuts around furniture, so it cannot\r\ntell a waist-high desk from a wall. Against the extracted Cellblock\r\ncollision geometry, at 1.5 m eye heights on one storey, 45% of its\r\n`Blocked` verdicts were false and 0.15% of its `Clear` verdicts were\r\nfalse.\r\n\r\nThe fight tick (`npc_ai/fight.rs`) calls\r\n`SpaceManager::attack_line_of_sight`:\r\n\r\n| Attacker | `Clear` | `Unknown` (endpoint off the mesh) | `Blocked` |\r\n|---|---|---|---|\r\n| Mobile NPC | fires | fires | paths toward the target |\r\n| Mobile NPC at its cover slot (NA23) | fires | fires | the verdict is from the slot's peek point past the prop, or the NPC's own ray if that one is clear; `Blocked` holds fire (`cover_no_shot`) and gives the slot up after 3 s |\r\n| Stationary NPC (`spawnlist.is_stationary`) | fires | fires | fires if the target is within 4 u of its height, otherwise holds (`stationary_holds`) |\r\n\r\nA stationary NPC cannot walk around the obstacle, so a false `Blocked`\r\nwould silence it for the whole fight. This is what happened to the Find\r\nAmbernol drone at the med-station desk (NPC AI restoration NA16, audit\r\nS11, decision D-NA11). The cost is that a turret that is already fighting\r\ncan shoot through a real wall on its own storey.\r\n\r\nThe `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule\r\nthat acted on it (`los_policy`: `strict`, `stationary`,\r\n`stationary_relaxed`, `stationary_other_storey`, or `cover_peek` for a\r\nmobile NPC standing at its cover slot, NA23). A drone firing across\r\nthe desk logs `los=blocked los_policy=stationary_relaxed`; a guard in cover\r\nfires on `los=clear los_policy=cover_peek` and holds on\r\n`los=blocked los_policy=cover_peek`. NA22's `in_cover_slot` fired from a\r\nslot whatever the verdict, and a guard shot a player through two walls\r\n(UAT-1). Where a world ships an occluder, these navmesh rules are replaced\r\n(NA27, below).\r\n\r\nAbility launch (`use_ability/handle.rs`) does not re-check an NPC's line\r\nof sight: the fight tick checks it in the same tick, just before the\r\nlaunch. Since NA31, a player's targeted ability is checked at fire time\r\nagainst the occluder and refused with `onErrorCode` 39; see\r\n[combat-system.md](combat-system.md#fire-time-line-of-sight).\r\n\r\n### Rust: collision-geometry line of sight (NA27)\r\n\r\nA world that ships `data/spaces/<world>.occ` answers every NPC\r\nline-of-sight question from its collision geometry, eye to eye\r\n(`space_manager/occlusion.rs`, decision D-NA13). Since NA31 each eye is at\r\nthe being's body-set height (`resources.body_sets.eye_height`): 1.81 m for a\r\nhuman male, 2.12 m for a Jaffa male, 0.15 m for a rat, and 1.5 m for a\r\nbody set with no measured mesh. See\r\n[being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md).\r\nThe navmesh workarounds above do not apply there:\r\n\r\n| Check | With an occluder |\r\n|---|---|\r\n| Idle aggro scan and assist | the occluder verdict; `Unknown` (outside the trimmed explorable area) rejects `no_los` (D-NA08) |\r\n| Fight tick attack check | `los_policy=occluder`: `Clear` fires, `Blocked` holds (a mobile NPC paths toward the target). No stationary relaxation (D-NA11). `Unknown` takes the navmesh rules above. |\r\n| NPC at a cover slot | looks from its own eyes over the prop; no peek point (D-NA12) |\r\n\r\nOn the Castle_CellBlock and Castle sweeps it had no false clears, and\r\nabout 1% of truly clear pairs read blocked, mostly rays grazing a wall\r\nedge. The Find Ambernol drone fires over the med-station desk, and\r\n`Hallway01_Guard` sees over its counter to 13.6 u. `Hallway02_Guard` does\r\nnot see through the hallway walls. `npc_ai.los` rows say\r\n`source=occluder` with `eye_height_used` and `target_eye_height_used` (the\r\ntwo body-set eyes; NA27's measurements were taken at 1.5 m on both ends,\r\nand NA31 moved the eyes of Jaffa and humans higher, so they see over\r\nslightly more). The file is paged: only the\r\n64 m pages near players are unpacked (`npc_ai.occluder event=residency`).\r\nDetails in\r\n[the NA27 worknote](../analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).\r\n\r\n---\r\n\r\n## Cover System\r\n\r\nCover nodes are spatial graph nodes placed in the world that provide defensive bonuses. The design supported mobs finding and reserving cover positions before or during combat.\r\n\r\nRelevant properties: `useCover` (bool), `bCoverFromTarget` (bool direction flag), `CombatStance` (enum), `reservedCoverNode` (node reference).\r\n\r\nRelevant cell methods: `onReserveCoverSlot()`.\r\n\r\nThe Python reference implemented none of this. The Rust server does (NA22); the design is in [architecture/cover-system.md](../architecture/cover-system.md). In short:\r\n\r\n- **Who:** `entity_templates.use_cover`, or a hostile (`faction = 10`) NPC when it is NULL. Stationary NPCs, props and melee-only NPCs never take cover.\r\n- **Spawned in cover:** an NPC authored within 1.5 u of a cover marker spawns holding that slot and keeps it while its target is in front of the cover and in range.\r\n- **Seeking cover:** in a fight, an NPC takes the best free slot that reaches its target (within attack range less 2 u), whether or not it already has a shot. With a shot it walks at most 10 u, and after a seek that finds nothing it waits 4 s before looking again.\r\n- **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing. In its slot it takes 10-60% less damage (25% for the typical slot, 35% with the stance) from shots the cover faces, and nothing off a flanking shot (NA32, D-NA15a, [combat-system.md](combat-system.md#cover-as-damage-reduction-na32)). An NPC holding its slot does not step back from a close target.\r\n- **Sight from cover (NA23):** an NPC at its slot looks from the slot's peek point past its prop, for aggro, assist and the shot alike. A wall past the cover still blocks. With no line it holds fire, and after 3 s gives the slot up. A slot is only picked if the NPC would have a shot from it.\r\n- **Leaving:** the slot and the stance go when the target flanks the cover (20 degrees past side-on, NA23) or leaves attack range, after 3 s with no shot, and on leash, death or surrender. A slot left as flanked, blind or unreachable is not re-taken by the same NPC for 6 s.\r\n- **Pose:** there is no server-to-client pose message. Whether the client crouches an NPC standing at a marker is an open owner experiment.\r\n\r\n`CombatStance` is still set but not acted upon.\r\n\r\n---\r\n\r\n## Behavior Event System (Not Implemented)\r\n\r\n`mobBehaviorEventSet` stores one or more named event sets that define data-driven behavior triggers. The design intent appears to be a table-driven system where events (e.g., "player enters radius", "health drops below 50%") trigger scripted responses (e.g., bark dialog, call for help, switch ability set).\r\n\r\nCell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared for runtime modification of the active event sets. No behavior set logic is implemented.\r\n\r\n---\r\n\r\n## Mob Groups (Not Implemented)\r\n\r\n`mobGroup` property and `mobJoinGroup()` cell method are defined for coordinating multiple mobs as a unit. This would enable pack behavior (all members assist when one is attacked), coordinated patrol paths, and shared threat lists. No group logic is implemented.\r\n\r\n---\r\n\r\n## Implementation Status Summary\r\n\r\n| Feature | Status | Notes |\r\n|---------|--------|-------|\r\n| State machine tick loop | DONE | `doAiAction()` dispatches by state |\r\n| Spawning state | DONE | Loads ammo, transitions to Idle |\r\n| Idle state | DONE | Waits for `threatGenerated()` |\r\n| Fighting state | DONE | Target selection, ability fire, 0.5s retry |\r\n| Dead state | DONE | Loop exits cleanly |\r\n| Threat accumulation | DONE | Damage -> threat formula, Idle->Fighting transition |\r\n| Top-threat targeting | DONE | Linear scan with dead-entity pruning |\r\n| Ability classification | DONE | Type/targeting/cooldown/ammo checks |\r\n| Ammo management | DONE | Load on spawn, consume per shot, auto-reload |\r\n| Combat exit | DONE | Threat empty -> Leashing (walk home) -> Idle, with the player-side combat drain. Python went Idle in place; NA12 diverges on purpose because Rust NPCs move (D-NA03). |\r\n| Loot on death | DONE | Loot table referenced, no tap check |\r\n| Aggression override | DONE (broadcast; timed revert still unported) | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. NA33: broadcast to witnesses on change and replayed on AoI entry. No timed revert (`overrideAggression`'s scheduled-revert helper, not ported); see [Wire: broadcast to witnesses](#wire-broadcast-to-witnesses-na33-d-na16). |\r\n| lookAt() rotation | DONE | Mob faces target during combat |\r\n| Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |\r\n| Chase path robustness | DONE | NA15: stop distance, level-aware repath, hold then give up at a partial route, partial route home, off-mesh start and target recovery, degenerate repath clears the route. See [Chase and unreachable targets](#chase-and-unreachable-targets-na15). |\r\n| NPC-vs-NPC combat | DONE | #1009: an NPC engages NPCs its faction reaction reads HOSTILE (the table with the NPC as viewer), found by a grid-bounded scan while a player watches; normal threat, abilities, leash and death; NPC-only kills pay nothing. See [NPC-vs-NPC combat](#npc-vs-npc-combat-1009). |\r\n| Proactive aggro detection | DONE | NA13: hostile Idle NPCs (override, else faction reaction) scan witnesses every 2 s through the radius (18 u default, `entity_templates.aggro_radius`), vertical band (4 u), fail-closed LoS and GM-switch gates, and seed 1.0 threat on the closest. See [Proximity aggro scan](#proximity-aggro-scan). |\r\n| Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |\r\n| Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |\r\n| Three-bucket ability selection | DONE | `choose_npc_ability` partitions known abilities into usable / cooling / needs-ammo and picks the first off-cooldown ID. See [#342](https://github.com/SandboxServers/Cimmeria/issues/342). |\r\n| Multi-ability sets | DONE | `ability_set_abilities` is keyed on `(ability_set_id, ability_id)`, so one set holds N abilities and the selector walks them all in ascending id order. Harset packet H09 widened the key and gave set 4 the staff pair (`584` ranged + `710` melee) and set 5 the ribbon pair (`711` melee + `712` ranged). |\r\n| Melee reach gate | DONE | `choose_npc_ability_within_reach` will not select an `is_ranged = false` ability for a target beyond `NPC_MELEE_RANGE` (3 m), so an NPC never plays a weapon swing at a target it cannot touch. When nothing is in reach it falls back to the unfiltered pick, whose short `max_range` sends a mobile NPC down the chase arm and a stationary one into `stationary_holds`. See the section below. |\r\n| `setMovementType` AoI broadcast | REMOVED | #779 (NA10) stopped sending it. The old broadcast went out as witness method index 1, which is `onSequence` on every NPC type, so each Fighting, Leash, Patrol or Follow entry sent witnesses a truncated `onSequence`. `broadcast_movement_type` (`cell/abilities/messaging.rs`) now records `last_movement_type` for telemetry and sends nothing (test `broadcast_movement_type_records_the_cache_and_sends_nothing`). The client animates from the velocity on each `EntityMoved`; a stopped NPC gets zero velocity (`npc_ai::stop_npc_movement`). The client has no NetIn `SetMovementType` handler. Originally closed [#270](https://github.com/SandboxServers/Cimmeria/issues/270). |\r\n| NPC respawn | DONE | `npc_respawn_tick` (1 Hz) reads `respawn_secs` (COALESCE `spawnlist`, `entity_templates`, minimum 3s enforced via CHECK). On NPC death the `combat::mark_npc_dead` helper stamps `respawn_at = now + respawn_secs`. Tick promotes Dead → Idle, restores HP / FOCUS / state / interaction-type / facing direction, snaps position to spawn, closes any open loot UIs on still-looting players, and re-creates the NPC on every witness: `LeftAoI`, then the AoI-enter introduction a new witness gets (`SpaceManager::introduction_events`: `EnteredAoI` with the createOnClient cascade carrying the spawn position, cleared state field, full HEALTH/FOCUS and restored interaction type, then the per-witness replays). The death burst's `onSequence` Entity_Death leaves the client pawn in its death pose and no property delta undoes it; before this the respawned NPC lay on the floor, alive and hard to target (2026-09-28 Castle colo playtest). Witness sets are untouched, so the next AoI tick sees no enter or leave. The `spawner.npc_respawn` info log carries `npc_id`, `template_id`, `witness_count` and `recreated`. `NULL` columns → one-shot mob (corpse persists). Effect-script-driven HP-to-0 paths that bypass `damage_apply` (e.g., `scripts::MeleeDamage`) also bypass respawn — future content using those paths must call `combat::mark_npc_dead` explicitly. |\r\n| Investigating state | DONE | `npc_ai_investigate` handler routes the NPC to a content-set `poi`, dwells 5s (`INVESTIGATE_DWELL_SECS`), returns to Idle. Reached via the `SetNpcPoi` content action; the `onNoise` cell-method hook for in-game audio is deferred. |\r\n| Patrol state | DONE | `npc_ai_patrol` walks the loop from `entity_templates.patrol_path_id` → `point_set_points`. Dwells `patrol_point_delay` at each waypoint. Threat preemption preserves `patrol_next_index` so the post-fight return resumes the route. |\r\n| Wander state | DONE | `npc_ai_wander` samples a random point within `wander_radius` of `spawn_position`, validates against the navmesh, dwells a random duration in `[wander_min_dwell_secs, wander_max_dwell_secs]`. Off-mesh candidates fall back to `spawn_position`. |\r\n| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). A route in flight is kept while it still ends within max(5 u, `follow_max_distance`) horizontally and 4 u vertically of the target, and replanned once the target has left its end behind (`follow_repath_stale`), so an escort whose leader respawns elsewhere turns toward the leader instead of walking the old route out. Reached via the `SetFollowTarget` content action. A `being`-class follower (Col Marsh, template 10) is ticked too: `ai_driven_npc_entity_ids` admits a `being` in Follow / Patrol / Wander / Investigating / Despawning / Submit / Error, never in Idle (props) or Fighting (NA24). A leash that ends a follower's fight returns it to Follow while its leader is in the space, and a being is never pulled into combat (NA42). |\r\n| Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |\r\n| Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |\r\n| Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |\r\n| Cover system | DONE | `crates/cell-cover/src/cell/cover/` (the spawn hold and Cover Stance: `crates/cell-world/src/cell/cover/stance.rs`) — world-space markers per world (NA21, `cover_extract`), uniform-grid spatial index, slot reservation with auto-release-prior semantics, and node scoring. NA22: `use_cover` from `entity_templates.use_cover`, the spawn hold, the in-range seek of a slot that reaches the target, arrival stop + Cover Stance (ability 1451), release (and stance removal) on flank, out of range, leash, death and surrender. See [architecture/cover-system.md](../architecture/cover-system.md). Pose on the client is unconfirmed. |\r\n| NPC movement speed | PARTIAL | `move_speed` is per template: `entity_templates.move_speed`, defaulting to `0.6` units per 100 ms tick (6 units/sec) when NULL (Col. Marsh is `0.9`). `npc_movement_tick` scales it by the movement-speed stat (`effective_move_speed`). It never varies by AI state, so a leash walk home, a patrol and a chase all move at the same speed. No movement type reaches the client (see the `setMovementType` row above); the client picks the gait from the `EntityMoved` velocity. The seed has per-world speeds (`resources.worlds.walk_speed` ≈ 2.069, `run_speed` = 8.125) that nothing reads for NPCs. |\r\n| Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared; deferred. |\r\n| Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared; deferred. |\r\n| Tapping (kill credit) | DONE | Content-engine kill chains supersede the Python tap design. |\r\n| Group mate threat assist | NOT IMPL | Methods declared, no logic. |\r\n
+---
+title: "NPC AI System"
+type: reference
+audience: engineers
+last_updated: 2026-09-25
+---
+
+# NPC AI System
+
+> **Last updated**: 2026-09-25
+> **Status**: All 12 Atrea AI states are now wired in the Rust runtime. Behavior states (Patrol, Wander, Investigating, Follow) are driven by `npc_ai_tick`; terminal states (Despawning, Submit, Error) are reachable via the `SetNpcAiState` content action. Implementation status detail is in the [summary table](#implementation-status-summary) at the bottom; the historical "Python design" sections below are kept for reference but no longer reflect the runtime.
+
+## Overview
+
+NPC mob behavior is driven by a state machine implemented in the Rust cell service (`crates/cell-combat/src/cell/service/npc_ai/`). The runtime mirrors the Python `SGWMob` design — every 2 seconds the `npc_ai_tick` snapshot-and-dispatch loop routes each NPC into a per-state handler. Threat events preempt behavior states into `Fighting` with per-state scratch preserved.
+
+The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.
+
+**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/cell-combat/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `fight_target.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash/` (policy, walk home, reset), `lifecycle.rs`, `ability_select.rs`), `crates/cell-combat/src/cell/combat/threat/` (`generate_threat` preemption and the leash evade, the default `LEASH_DISTANCE` in `aggro.rs`, the player-side drain in `player_combat.rs`), `crates/cell/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/cell-cover/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
+
+---
+
+## AI State Machine
+
+### State Definitions
+
+Defined in `deprecated/python/Atrea/enums.py` lines 228-239.
+
+| State | Value | Implemented | Notes |
+|-------|-------|-------------|-------|
+| `AI_STATE_Spawning` | 0 | INERT | Variant preserved for source-enum completeness but the Rust runtime starts every NPC at Idle and never enters this state. Future spawn-VFX hooks (Goa'uld ribbon-device reveal, etc.) can plug in here. |
+| `AI_STATE_Idle` | 1 | DONE | Waits for threat or AI tick promotion into Patrol / Wander / auto-aggro. |
+| `AI_STATE_Investigating` | 2 | DONE | `npc_ai_investigate` — pathfind to `poi`, dwell 5 s on arrival, return to Idle. Reached via `SetNpcPoi` content action. |
+| `AI_STATE_Fighting` | 3 | DONE | Target selection, ability selection, fire. Per-ability range gating + retry-on-launch-failure (see [#329](https://github.com/SandboxServers/Cimmeria/issues/329)). |
+| `AI_STATE_Leashing` | 4 | DONE | The NPC walks home on the navmesh, evading, then heals and resets. Entered when the NPC itself goes past its leash radius or loses its last target. See [Leash and reset](#leash-and-reset-na12). |
+| `AI_STATE_Dead` | 5 | DONE | Set on death via `combat::mark_npc_dead`. `npc_respawn_tick` (1 Hz) promotes back to Idle when `respawn_at` elapses. |
+| `AI_STATE_Despawning` | 6 | DONE | `npc_ai_despawn` removes the entity from the space. Reached via `SetNpcAiState`. |
+| `AI_STATE_Follow` | 7 | DONE | `npc_ai_follow` maintains distance band `[follow_min_distance, follow_max_distance]` to a target. Reached via `SetFollowTarget`. |
+| `AI_STATE_Patrol` | 8 | DONE | `npc_ai_patrol` walks a loop from `entity_templates.patrol_path_id` → `point_set_points`, dwells on arrival at each waypoint. Threat preemption preserves the index. |
+| `AI_STATE_Wander` | 9 | DONE | `npc_ai_wander` samples random points within `wander_radius` of spawn, dwells for `[wander_min_dwell_secs, wander_max_dwell_secs]` between hops. |
+| `AI_STATE_Submit` | 10 | DONE | `npc_ai_submit` clears combat state and holds. Reached via `SetNpcAiState`. |
+| `AI_STATE_Error` | 11 | DONE | `npc_ai_error` is quiescent — diagnostic fallback. Reached via `SetNpcAiState` or the `enterErrorAIState` slash command. |
+
+### State Transitions
+
+`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). It never preempts a Leashing NPC (the evade) or a `being` (class 0x01: props and story actors such as Col Marsh), which takes no threat at all (NA42). Idle promotion priority is **proximity aggro > patrol > wander**: a hostile NPC scans first and falls through when nobody qualifies (NA13).
+
+```
+Idle      -->  Fighting    (generate_threat fires + NPC was Idle / Patrol / Wander / Investigating / Follow)
+Idle      -->  Patrol      (npc_ai_tick observes patrol_path non-empty)
+Idle      -->  Wander      (npc_ai_tick observes wander_radius > 0 and no patrol_path)
+Idle      -->  Investigating (SetNpcPoi content action)
+Idle      -->  Follow      (SetFollowTarget content action with a valid target)
+Fighting  -->  Leashing    (the NPC is past its leash radius from spawn: leash_out)
+Fighting  -->  Leashing    (last target dead / gone / out of AoI for 5 s: target_lost;
+                            threat list already empty: threat_empty)
+Leashing  -->  Idle        (walked home: leash_arrived; no route or 20 s timeout: leash_snap_fallback)
+Leashing  -->  Follow      (a follower reset in place whose leader is still in the space: follow_resumed, NA42)
+Any alive -->  Follow      (a pet, every turn it is not fighting: pet_follow; a pet's fight ends here,
+                            never in Leashing)
+Follow    -->  Fighting    (a pet's stance engages a target: pet_engage)
+Any alive -->  Dead        (HP -> 0; combat::mark_npc_dead)
+Dead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)
+Any alive -->  Despawning / Submit / Error  (SetNpcAiState content action)
+```
+
+### Tick Loop
+
+`doAiAction()` is the main AI tick, called on a recurring timer:
+
+```python
+def doAiAction(self):
+    if self.isDead():
+        return
+    state = self.AIState
+    if state == AI_STATE_Spawning:
+        self.doAiSpawnAction()
+    elif state == AI_STATE_Idle:
+        self.doAiIdleAction()
+    elif state == AI_STATE_Fighting:
+        self.doAiFightingAction()
+    # All other states fall through without action
+```
+
+---
+
+## Threat System
+
+### Data Structure
+
+Threat is stored as a plain dict on the mob instance:
+
+```python
+self.threat = {}  # entityId (int) -> accumulated threat (float)
+```
+
+### Damage-to-Threat Conversion
+
+```python
+# In onStatChange() or equivalent damage handler:
+threat = -healthChange * 2 - focusChange
+self.threatGenerated(attackerEntityId, threat)
+```
+
+Health damage is weighted 2x relative to focus damage. The formula is negated because `healthChange` is negative when damage is dealt.
+
+### Threat Accumulation
+
+```python
+def threatGenerated(self, entityId, threat):
+    if entityId not in self.threat:
+        self.threat[entityId] = 0.0
+    self.threat[entityId] += threat
+    if self.AIState == AI_STATE_Idle and not self.isDead():
+        self.AIState = AI_STATE_Fighting
+```
+
+### Target Selection
+
+`getTopThreateningEntity()` does a linear scan of the threat dict:
+
+1. Iterates all entries in `self.threat`.
+2. Prunes entries where the entity is dead (`entity.isDead()` or entity no longer exists in AoI).
+3. Returns the entity ID with the highest accumulated threat value.
+4. Returns `None` if the list is empty after pruning, which triggers a transition back to Idle.
+
+**Known issues:**
+- Entity ID recycling: a dead entity's ID may be reused by a new entity, which would falsely inherit threat.
+- Distance, line-of-sight, and cover are not factored into target selection.
+- No threat decay over time.
+
+### Unimplemented Threat Methods
+
+Declared on `SGWMob` but contain no logic: `addDirectToThreatList`, `addBuffToThreatList`, `addHealToThreatList`, `addToThreatList`, `removeFromThreatList`, `onGroupMateEnteredCombat`, `onGroupMateThreatTransfer`.
+
+---
+
+## Aggression System
+
+### Aggression Levels
+
+`EMobAggressionLevel` (`entities/defs/enumerations.xml`). Low is hostile.
+
+| Level | Value | Meaning in the Rust server |
+|-------|-------|---------|
+| `HOSTILE` | 1 | Attacks on sight: the only level the Idle proximity scan acts on |
+| `SUSPICIOUS` | 2 | Not aggressive on sight |
+| `NEUTRAL` | 3 | Fights back only when attacked |
+| `FRIENDLY` | 4 | Not aggressive on sight |
+| `DEFAULT` | 5 | Not aggressive on sight (python compared the stored level against NEUTRAL) |
+
+### Effective aggression (NA13, D-NA01)
+
+An NPC's aggression toward players is its **override** when one is set, otherwise the **faction reaction** of the player's faction toward the NPC's faction. This is python's `SGWPlayer.getAggressionLevel`.
+
+- **Override.** `CellEntity::aggro.override_level` (python `aggressionOverride`). It is seeded from `spawnlist.aggression_override` (1-5, CHECK-constrained) and changed at runtime by the `set_aggression` content action, the `spawn_entity` action's `aggression` parameter, the GM `.aggression` command, and the surrender path (NEUTRAL). Content levels keep their pre-NA13 numbers: `1` was "aggressive" and is HOSTILE; `0` was "passive" and maps to NEUTRAL.
+- **Faction reaction.** `FACTION_REACTION_TABLE` (44 x 44) in `enumerations.xml`, identical to `deprecated/python/Atrea/enums.py`, is ported as a constant table in `crates/cell-world/src/cell/combat/faction_reaction.rs`. A unit test re-parses the XML so the two cannot drift. It is a code constant rather than a seed table because it is engine data the client ships, not per-zone content, and the scan reads it every tick. Players react as faction **3** (`Praxis`), the faction every client is told on world entry (`mercury::aoi::PLAYER_FACTION`). A player's server-side `CellEntity::faction` stays 0, which the `faction == 10` damage and right-click gates rely on.
+
+In the seeds, faction 10 (`Straegis`: the NID guards and PRUs) reads HOSTILE, factions 1 and 3 read FRIENDLY, and NULL or 0 reads NEUTRAL.
+
+### Proximity aggro scan
+
+`npc_ai_tick` admits an Idle NPC when it is hostile to players, fights NPCs ([NPC-vs-NPC combat](#npc-vs-npc-combat-1009)), has a patrol path, or has a wander radius. A hostile Idle NPC runs `npc_ai_idle_auto_aggro` every AI tick (about 2 s) over its AoI witnesses. A witness becomes a candidate only when every gate in `npc_ai/aggro_gates.rs` passes, in this order:
+
+| Gate | Reject reason |
+|---|---|
+| Is a player | `not_player` |
+| Alive | `dead` |
+| Not on the NPC's server-side faction | `same_faction` |
+| The NPC's effective aggression toward it is HOSTILE | `not_hostile` |
+| Not a GM with `.aggro off` set | `gm_ignored` |
+| Height difference `abs(dy) <= 4` u (`AGGRO_VERTICAL_BAND`) | `out_of_vertical_band` |
+| Horizontal distance within `entity_templates.aggro_radius` (NULL: 18 u, `DEFAULT_AGGRO_RADIUS`) | `out_of_radius` |
+| Navmesh line of sight is `Clear` | `no_los` |
+
+The closest candidate gets a 1.0 threat seed (`cause=proximity`). During the NA12 post-reset window every witness is rejected with `post_reset_suppressed`. Rejects are logged as `npc_ai.aggro_scan event=candidate_rejected` with the `reason` above, sampled per NPC and player (NA02).
+
+**Line of sight fails closed for aggro (D-NA08).** An `Unknown` answer, meaning an endpoint the navmesh does not cover, rejects the candidate. The attack check in the fight keeps failing open, so an NPC already fighting does not stop shooting over a mesh hole. A space with no navmesh has nothing to check and passes; there the vertical band is the only storey guard. The navmesh ray cannot see floors or ceilings (audit S15), so the band is also what stops a guard under a ramp from seeing a player on it.
+
+**A guard in cover looks from its peek point (NA23, D-NA12).** An NPC standing at the cover slot it holds, which a guard authored in cover does from spawn, casts the ray from the slot's peek point past its prop, and sees the candidate when that ray or its own is clear. Its own ray alone hits the prop, a navmesh hole, within half a metre: at UAT-1 `Hallway01_Guard` rejected a player 8.1 u in front of its counter as `no_los`. The assist check uses the same rule. See [architecture/cover-system.md decision 9](../architecture/cover-system.md#9-the-peek-point-na23-d-na12).
+
+If the scan finds nobody, a hostile NPC that also has a patrol path or wander radius falls through to it, so faction-derived hostility does not freeze a patroller. A patrolling or wandering NPC does not scan until it is Idle again.
+
+### Same-room assist (NA14, D-NA04)
+
+**A marked deviation from legacy.** The 2009 server had no assist: a mob only took threat from its own attackers, so shooting one of two guards standing side by side left the other watching. The owner approved same-room assist because that reads as broken AI.
+
+When an NPC enters Fighting from damage (`cause=damage`) or proximity aggro (`cause=proximity`), `combat::generate_threat` calls `npc_ai::recruit_assisters` (`npc_ai/assist.rs`). Every NPC in the victim's space on the victim's server-side faction and within twice its own assist radius is considered, and joins only when every gate passes, in this order:
+
+| Gate | Reject reason |
+|---|---|
+| Alive | `dead` |
+| Idle, patrolling or wandering. Fighting, Leashing, Investigating and Follow NPCs are never pulled | `not_idle` |
+| Itself HOSTILE to players (override, else faction reaction) | `not_hostile` |
+| Not inside its NA12 post-reset window | `post_reset_suppressed` |
+| The target is not a GM with `.aggro off` set | `gm_ignored` |
+| Height difference to the victim `abs(dy) <= 4` u | `out_of_vertical_band` |
+| Horizontal distance to the victim within its own `entity_templates.assist_radius` (NULL: 10 u, `DEFAULT_ASSIST_RADIUS`) | `out_of_radius` |
+| Navmesh line of sight from it to the victim is `Clear` (`Unknown` fails closed where a mesh exists, as for aggro) | `no_los` |
+
+A joining NPC takes a 1.0 threat seed on the victim's target and enters Fighting with `cause=assist` (transition `reason=assist`). Only a live player target recruits.
+
+- **No chaining.** An assister enters Fighting with `cause=assist`, which does not recruit, so a fight never ripples from room to room: in a line of three guards 7 u apart, shooting the first pulls the second but not the third.
+- **Content threat does not recruit.** A chain's `generate_threat` keeps a scripted fight exactly as scripted.
+- **Chain-armed spawns are safe.** Spawns 10 and 20 are seeded NEUTRAL (below), so they fail `not_hostile` and wait for their chain.
+- In Castle Cellblock the MessHall guards (spawns 28 and 29, 7.2 u apart, same room) assist each other. The NID Guard template (24) seeds `assist_radius = 26` (D-NA09 UAT tuning, colo 2026-09-26): the three Barracks guards (spawns 25, 26 and 36) stand 13.1, 19.3 and 25.0 u apart in one room, and at the 10 u default a shot barracks guard rallied nobody. The upper-hallway guards now sit inside each other's radius (18.6 u and 20.5 u) but the corridor walls block their line of sight, so they still do not assist (`tests/npc_ai/assist_barracks.rs`).
+- In Castle (world 8) the population guard templates 181-186 seed `assist_radius = 12` and `aggro_radius` 15 u (inside, 181-183) or 20 u (outside, 184-186). Each post keeps its members within 12 u of a neighbour and at least 12 u from any other group, so a shot guard rallies its own post only; the Interrogation Block pair is deliberately 5-6 u from Romney. See the [castle-population ledger](../analysis/castle-population/README.md#decisions) (D-CP04).
+
+Telemetry: the join is `npc_ai.aggro event=acquired cause=assist` (counter `npc_ai_aggro_total{cause="assist"}`), plus a DEBUG `npc_ai.aggro_scan event=assist_joined` that names the `victim_id`. A considered neighbour that was passed over logs `npc_ai.aggro_scan event=assist_rejected` with the `reason` above, sampled per assister and victim.
+
+### NPC-vs-NPC combat (#1009)
+
+NPCs fight each other when their factions say so. The 44 x 44 faction reaction table (above) always had NPC-versus-NPC rows; before #1009 nothing read it with an NPC as the viewer, so friendly NPCs (Op-CORE marines, Praxis Jaffa) could not hold a line against NID guards.
+
+**Who fights whom.** NPC `A` may take NPC `B` as a target when `REACTION[A.faction][B.faction]` is HOSTILE (`combat::npc_may_target_npc`). Both must be SGWMob NPCs: players, pets and beings (props, Col Marsh) never take part. The table is asymmetric and is read as written. In today's seeds that means faction 10 (`Straegis`, the NID guards) and faction 3 (`Praxis`) fight each other, and faction 1 (`World Object`, every friendly placed before #1009) is FRIENDLY in every row, so it never fights. The aggression override only narrows this: a non-HOSTILE override (a chain-disarmed guard, a surrendered NPC, `set_aggression 0`) keeps the NPC out of NPC fights too, and a HOSTILE override does not turn an NPC on NPCs its faction does not fight. A static-spawn survey at the time of #1009 found no hostile NPC pair within aggro range anywhere in the seed, so nothing changed until the Castle standoff was moved into range.
+
+**Admission and scan.** An Idle NPC whose faction has an NPC enemy (`combat::seeks_npc_targets`) is ticked, and its Idle scan (`npc_ai_idle_auto_aggro`) also looks at the NPCs around it:
+
+- **Spatially bounded.** Candidates come from the space's `WorldGrid` (`SpaceManager::npc_ids_near`, 50 u cells) within twice the NPC's aggro radius, never from a sweep of the space, so a crowded world does not make the tick O(n^2). The guard is `tests/npc_ai/npc_vs_npc_budget.rs::the_npc_scan_is_a_bounded_grid_query`.
+- **Only while watched.** The NPC scan runs only when some player has the scanning NPC in their AoI. An NPC fight nobody can see is not started, so a standoff in an empty zone costs nothing but its idle ticks; a fight already under way carries on without a witness until it ends.
+- **Gates** (`aggro_gates::evaluate_npc_candidate`), in order: a HOSTILE NPC combatant (anything else is not a candidate and logs nothing), alive (`dead`), not walking home (`target_evading`, the NA12 evade), not surrendered, despawning, spawning or in the error state (`target_unavailable`), then the same room as for players: `abs(dy) <= 4` u, inside the scanner's aggro radius, and line of sight (`out_of_vertical_band`, `out_of_radius`, `no_los`).
+- **Pick.** The closest survivor of the player scan and the NPC scan wins; a tie goes to the player. It gets the same 1.0 threat seed with `cause=proximity`. The NA12 post-reset window suppresses NPC targets too.
+
+**Fighting.** Nothing is special once the NPC is Fighting: threat, target selection, the three-bucket ability pick, cover, chase, the leash and the walk home are the ones used against players, keyed by entity id. A shot NPC takes threat on its NPC attacker through `combat::generate_threat` and fights back, and a threat table can hold players and NPCs together; the top threat wins. An NPC fight puts no player in combat. Same-room assist (NA14) stays player-only: an NPC-on-NPC engagement recruits nobody, so a standoff does not ripple.
+
+**Deaths.** An NPC that dies to anyone leaves every other NPC's threat list at the moment of death (`npc_ai::purge_dead_target_from_threat`, the NA24 purge extended from players to NPCs), and each NPC whose list runs dry starts home. An NPC killed by another NPC's turn gets no turn of its own in that tick: the dispatcher re-reads each NPC's state before its turn and skips a corpse, and runs the state an NPC is in now rather than the one it had when the tick began (logged as `npc_ai event=state_changed_mid_tick` at DEBUG). Before, a corpse ran a Fighting turn, found its cleared threat list and walked home, from Dead to Leashing. Respawn and one-shot rules are unchanged. Credit stays with the killing blow: an NPC-only kill (the killer is a plain NPC, not a pet) rolls no loot, pays no XP and fires no `EntityDeath`, so no kill objective moves ([abilities ADR decision 32](../architecture/abilities-and-effects-decisions-23-33.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)). A player's own kills pay as always.
+
+**No-witness warnings need a player present (DA-F2).** NPCs fighting with nobody in AoI drop every method they send by design: there is no client to draw it. The two "nobody saw it" WARNs on the NPC path, `abilities.wire event=wire_npc_no_witnesses` (an NPC's `onStatUpdate`, `onStateFieldUpdate` or property update with no witness) and `abilities.sequence outcome=no_witnesses` (an NPC's attack `onSequence` with no witness), are therefore written only when a player is present. One rule decides it, `SpaceManager::player_present(entity, counterpart)` in `cell-world` (`space_manager/player_presence.rs`). Both WARNs fire only once the witness list came back empty. A player is present when:
+
+- **In range.** A player in the NPC's space has the NPC within that player's AoI radius. The counterpart's range is deliberately not tested: the empty witness list is the shooter's, and a player who sees only the target (the Debug Area arena, colo 2026-10-05, a player 145 m from the guards and past 150 m from the shooting Soldier) cannot see the shooter. This is the fault the WARN exists for: a player stands in range, but the witness list says nobody sees the NPC (a stale or broken witness set, the unrendered guard of #838). It walks `Space::players`, the set `get_witnesses_of` has just walked.
+- **Involved.** The NPC itself, the counterpart, or anyone on the NPC's threat list is player side: a player or something a player owns, a pet (it counts as its owner), a deployable or a GM's lab dummy. This covers a player fighting the NPC from beyond their own AoI.
+
+With no player present the drop writes nothing at any level, and no counter is bumped. Owner decision, 2026-10-05: "NPC vs NPC warnings without players present can just go to null. Agree that if issue is happening with player present throw warning." It came from the Debug Area arena's first 30 minutes on the colo, which wrote about 55 such WARNs without a fault among them. Guards: `messaging::tests::an_npc_only_fight_nobody_watches_writes_no_witness_warn`, `an_unseen_npc_a_player_is_fighting_still_warns` and `a_player_in_range_with_a_stale_witness_set_still_warns`; `use_ability::tests::sequence::an_npc_shooting_an_npc_with_no_player_near_writes_nothing` and `an_npc_shooting_an_npc_beside_a_player_with_a_stale_witness_set_warns`, `an_npc_shooting_a_target_a_player_sees_from_beyond_its_own_aoi_writes_nothing`, beside the player-target `an_npc_attack_nobody_can_see_warns_no_witnesses`; the rule's unit tests in `player_presence::tests` (in range, in range of the counterpart only, involved, pet, deployable and lab dummy).
+
+**Telemetry.** The acquisition is `npc_ai.aggro event=acquired` with `target_kind` (`player` or `npc`), `target_tag`, `npc_faction` and `target_faction`. A HOSTILE NPC the scan refused logs `npc_ai.aggro_scan event=npc_candidate_rejected` (DEBUG, sampled per pair and reason) with both ids and factions and the `reason` above. An NPC-only kill logs `loot.drop event=skipped reason=npc_only_kill` (INFO). See [negative-logging-convention.md](../architecture/negative-logging-convention.md#npc-vs-npc-target-refusals-and-npc-only-kills-1009).
+
+**Client.** No new wire: an NPC's shot at an NPC is the same `onEffectResults` (sent to the attacker's witnesses), `onStatUpdate` and death burst as a shot at a player or a pet's shot at a mob. Whether the client draws an NPC-sourced hit on a non-player target has not been seen in-client; it is a UAT item (`CP19` in the [unified UAT guide](../guides/unified-uat.md#castle-population)).
+
+### Chain-armed spawns (D-NA01a)
+
+A spawn whose fight a content chain must start carries `aggression_override = 3` (NEUTRAL), and the chain runs `set_aggression 1` plus `generate_threat`:
+
+| Spawn | Tag | Chain |
+|---|---|---|
+| 20 | `ArmYourself_NIDGuard` | 1008 (enter `Castle_CellBlock.Region8`) |
+| 10 | `ArmYourself_PrisonerRetrievalUnit` | 1032 (Ambernol vial interaction) |
+
+No other Castle (world 8) or Harset seed calls `set_aggression`, so no other spawn needs the override. Every other faction-10 spawn now aggroes on sight within its radius: the Cellblock and Castle NID guards and PRUs, `Castle_Romney`, `Castle_Muelbach`, the Castle Bravo officers, and the SGC_W1 Ba'al Jaffa.
+
+### GM switch: `.aggro on|off` (D-NA02)
+
+Mobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro and assist: damage and content threat still engage a GM, but the mob a GM shoots does not pull its neighbours in (NA14). It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.
+
+### Wire: broadcast to witnesses (NA33, D-NA16)
+
+Python's `setAggression` sent `onEntityProperty(GENERICPROPERTY_MobAggression = 6, level)` to the owner and witnesses, but no client handler for property type 6 was ever found — that call was dead on arrival in 2009. `createOnClient` separately sent `onAggressionOverrideUpdate(level)`, once, only when an override was already set at spawn/reconnect time, to the ClientMethod the client handler at `0x00d31bd0` actually reads (stores the INT8 `aAggressionLevel` at `GameMob + 0x16c`; registered through `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>`, paired with an `onAggressionOverrideCleared` handler `0x00d31cd0` never called from legacy python at all).
+
+NA33 confirmed the SGWMob flat index (27 for Update, 28 for Cleared — `Lootable` contributes no client methods, so SGWMob's own two begin right after the shared SGWSpawnableEntity/SGWBeing 0-26 prefix) and wired the server to use the ClientMethod, not the dead property, on every path:
+
+- **Runtime change** (content `set_aggression` action, GM `.aggression` command, the surrender/`npc_ai_submit` disarm): broadcasts `onAggressionOverrideUpdate(level)` to every witness, or `onAggressionOverrideCleared` when the override is cleared. This is a deliberate divergence from legacy's literal wire call — see [findings/npc-aggression-broadcast.md](../reverse-engineering/findings/npc-aggression-broadcast.md) for why finishing `createOnClient`'s intent (not `setAggression`'s dead one) is correct and needs no client patch.
+- **AoI entry**: replays `onAggressionOverrideUpdate` to a newly-arrived witness when an override is active, mirroring `createOnClient`'s conditional send exactly (a faction-derived, no-override mob still sends nothing).
+
+It remains a display value only: the client derives friend or foe from the faction it is sent, and the aggression level's exact on-screen effect (nameplate color, reticle color, or an interaction verb — `UIAggressionLevel` is registered as a Lua-scriptable enum type alongside `UIArchetype`/`TargetType`/etc.) was not directly observed, since no client Lua source is present in this tree.
+
+### Timed Overrides
+
+```python
+def overrideAggression(self, level, entityBase, seconds):
+    # Sets aggressionOverride, schedules revert after `seconds`
+```
+
+This let scripted events change a mob's stance for a while (for example, a friendly NPC turned hostile during a mission encounter) and revert it afterwards. Not ported.
+
+---
+
+## Ability Selection (Combat AI)
+
+### Combat profile and the Pistol Shot placeholder
+
+`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves
+which abilities a spawned NPC gets. Spawning and the AI share the rule: an
+explicit `ability_ids` set always wins, and an empty set takes the placeholder
+that the policy allows.
+
+| `ability_ids` | Policy | Components | Abilities | Source |
+|---|---|---|---|---|
+| non-empty | any | any | the set, in order | `ExplicitSet` |
+| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
+
+592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
+(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
+firearm. Production runs `PLACEHOLDER_POLICY = Legacy`, so behaviour is
+unchanged. Decision D-NC1 is pending: if it is taken, NC-30 flips the policy,
+so only a human with a `WP-Human.*` component keeps 592 and an NPC with no
+ability set idles.
+
+Two diagnostics log on target `npc.combat_profile`, at most once per template
+id per process:
+
+- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
+  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
+  (or `none`), `ability_id`, `ability_name`.
+- `combat_profile_unresolved` (WARN): the template has no ability set and no
+  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
+
+An explicit set logs nothing. In the AI, an NPC that knows no ability falls
+back to `placeholder_ability(policy)`: 592 under `Legacy`, none under
+`RequireWeaponEvidence`.
+
+### Classification
+
+`classifyHostileAbility(target, ability)` evaluates a single ability and returns one of:
+
+| Result | Value | Condition |
+|--------|-------|-----------|
+| `ABILITY_Usable` | 1 | Passes all checks |
+| `ABILITY_CoolingDown` | 2 | On cooldown |
+| `ABILITY_Filtered` | 3 | Heal, buff, or non-single-target mode |
+| `ABILITY_NeedsAmmo` | 4 | No ammo remaining |
+
+Classification logic in order:
+1. **Filter heals and buffs** — Abilities that restore health or apply positive effects to self are excluded.
+2. **Require single-target mode** — Only `TCM_Single` targeting mode is accepted. AoE and cone abilities return `ABILITY_Filtered`.
+3. **Check cooldown** — If the ability's cooldown timer is active, returns `ABILITY_CoolingDown`.
+4. **Check ammo** — If the ability requires ammo and the mob has none, returns `ABILITY_NeedsAmmo`.
+
+### Selection Loop
+
+`selectHostileAbility(target)` iterates the mob's ability set:
+
+```python
+def selectHostileAbility(self, target):
+    needs_ammo = []
+    for ability in self.getAbilities():
+        result = self.classifyHostileAbility(target, ability)
+        if result == ABILITY_Usable:
+            return ability       # First usable ability wins
+        elif result == ABILITY_NeedsAmmo:
+            needs_ammo.append(ability)
+    if needs_ammo:
+        self.triggerReload()    # All blocked by ammo: reload
+    return None
+```
+
+There is no priority weighting — the first usable ability in iteration order is selected. No distance checks, no cooldown preference, no situational logic (e.g., prefer ranged when target is far).
+
+### Rust: reach-filtered selection
+
+The Rust selector lives in `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs`
+and diverges from the loop above in two ways.
+
+**Deterministic order.** `choose_npc_ability` sorts the known ability ids
+ascending and takes the first one off cooldown. The original returned
+`usable[0]` out of a CPython 2 dict, so its order was a hash artefact; the
+original developers left `# TODO: Which ability should we use? Use some
+weighting/rand here.` directly above that line, so lowest-id is a Cimmeria
+convention rather than a divergence from a contract. The practical
+consequence for a content author is that **the lowest-id member of an
+ability set is the NPC's primary attack** and the rest are cooldown
+fallbacks.
+
+**A distance gate the original never had.** `classifyHostileAbility` carries
+the literal comment `# TODO: Check distance, LOS` above its
+`return ABILITY_Usable`. `choose_npc_ability_within_reach` is that TODO:
+
+- An `is_ranged = false` ability is only selectable when the target is
+  inside `NPC_MELEE_RANGE` (3 m). Without the gate a melee auto-attack
+  resolves to the 30 m ranged default, because `abilities.max_range` is the
+  `0` "use the server default" sentinel on every auto-attack in the seed and
+  `is_ranged` is otherwise read only by `calculate_qr` to pick the
+  accuracy/defence branch. The visible defect is an NPC playing a staff or
+  ribbon *swing* at a target thirty metres away.
+- When nothing is in reach it falls back to the unfiltered pick rather than
+  returning `None`. `None` is the caller's "all cooling, hold fire" signal,
+  so returning it would freeze a melee-only NPC at distance. Handing back
+  the out-of-reach ability lets `ability_ranges` report its real 3 m
+  `max_range`, and the fight tick's existing out-of-range arm then does the
+  right thing: a mobile NPC chases and swings once it arrives, a stationary
+  one lands in `stationary_holds` and turns to face its target.
+
+**Melee first inside reach (NC-20).** Inside `NPC_MELEE_RANGE` an NPC that is not a pet takes an off-cooldown melee ability before any ranged one, whatever the ids. A Jaffa at 2 m therefore swings the staff melee (710) rather than 584, and a Goa'uld (set 5) at 2 m swings 711. Beyond 3 m the ranged half is picked as before. Pets (D-NC4) keep the lowest-id walk.
+
+`NPC_MELEE_RANGE` is derived from the weapon table rather than invented.
+`resources.items` carries `min_melee_range` / `max_melee_range` alongside
+the ranged pair; across every item binding an `EVENT_ITEM_MELEE` ability the
+melee maximum is 0, 2 or 3, so 3 is the largest reach any shipped weapon
+expresses. `NPC_ATTACK_RANGE` (30) is the same table's dominant
+`max_ranged_range`. Both constants live in
+`crates/cell-combat/src/cell/combat/threat/aggro.rs`.
+
+Not ported: the `ABILITY_Filtered` pre-pass. Cimmeria's selector does not
+reject heals, buffs or non-`TCM_Single` abilities before partitioning. That
+is inert while every NPC ability set holds only single-target hostile
+auto-attacks, but it is a live hazard for the first content author who puts
+a self-buff or an AoE into a mob set.
+
+### Combat Tick
+
+`doAiFightingAction()` runs each combat tick:
+
+1. Call `getTopThreateningEntity()`. If `None`, set `AIState = AI_STATE_Idle` and return.
+2. Call `lookAt(target)` to rotate the mob toward the target.
+3. Call `selectHostileAbility(target)`. If an ability is returned, launch it.
+4. If no ability is available (all on cooldown or no ammo), schedule a 0.5-second retry.
+
+---
+
+## Ammo Management
+
+Mobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/cell-combat/src/cell/abilities/mod.rs:259-263`](../../crates/cell-combat/src/cell/abilities/mod.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.
+
+Legacy accessors and their Rust equivalents:
+
+| Legacy (`SGWMob.py` / `SGWPlayer.py`) | Rust equivalent |
+|----------------------------------------|-----------------|
+| `getAmmoStat()` — stat ID for current slot | `crate::stats::AMMO_SLOT_1 + entity.active_bandolier_slot` |
+| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity/bandolier.rs#L19) |
+| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L12) |
+| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity/bandolier.rs#L36) |
+| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/cell-combat/src/cell/cell_methods/player/world/reload.rs#L71)) |
+
+Legacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.
+
+If/when NPC reload is needed, the same machinery applies — but **all three** of the following are required together; partial work will silently leave NPCs stuck mid-reload:
+
+1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs)).
+2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).
+3. **Widen `reload_completion_tick`** ([`ticks/reload_completion.rs:24`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L24)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
+
+See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.
+
+---
+
+## Tapping System (Kill Credit)
+
+These properties are defined in `SGWMob.def` but have no Python implementation:
+
+| Property | Type | Purpose |
+|----------|------|---------|
+| `tappedEntity` | INT32 | Entity ID with loot and XP rights |
+| `tappedSquad` | INT32 | Squad ID with loot and XP rights |
+| `tappedSquadMembers` | ARRAY<INT32> | Individual members of the tapped squad |
+
+Tapping determines who receives loot drops and XP when the mob dies. Currently, loot generation on death runs without any tap check — all loot goes to whoever triggered the death event.
+
+Since NPC-vs-NPC combat (#1009) a kill whose killer is a plain NPC rolls no loot at all, and pays no XP or mission credit: see [NPC-vs-NPC combat](#npc-vs-npc-combat-1009).
+
+---
+
+## Mob Properties Reference
+
+Key properties from `SGWMob.def` (55 total), grouped by subsystem:
+
+**Controller IDs** (C++ controller handles, stored as INT32):
+`navControllerID`, `visionID`, `yawID`, `behaviorTimerID`, `despawnTimerID`, `investigateTimerID`, `grenadeDetectorID`, `trackControllerID`, `targetOverrideTimer`
+
+**AI State:**
+`AIState`, `POI` (VECTOR3 — investigate destination), `Home` (VECTOR3 — spawn/leash anchor), `lastNavigate`, `stateLock`, `stateChanges`, `stateHistory`, `disableBehaviorSystem`, `nextWanderTime`
+
+**Combat:**
+`MyAbilitySetID`, `LootTableID`, `Aggression`, `minIdealRange`, `maxIdealRange`, `isKillable`, `isTrackable`, `isWorthXP`
+
+**Cover:**
+`bCoverFromTarget`, `useCover`, `reservedCoverNode`, `CombatStance`
+
+**Following:**
+`currentlyFollowing`, `followTarget`, `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType`
+
+**Patrol:**
+`patrolPaths` (dict), `currentPatrolPath`, `patrolMovementType`
+
+**Hearing:**
+`hearingRadius`
+
+**Despawn:**
+`despawnFlag`, `despawnTimerID`, `spawnTime`, `decayTimerID`
+
+**Behavior Events:**
+`mobBehaviorEventSet`
+
+---
+
+## Unimplemented States: Reconstruction Notes
+
+### Leash and reset (NA12)
+
+Implemented behaviour, decided in D-NA03 (corrected by D-NA10) of the [NPC AI restoration ledger](../analysis/npc-ai-restoration/README.md). Code: `crates/cell-combat/src/cell/service/npc_ai/leash/` and `fight_target.rs`.
+
+**When an NPC gives up.** The leash is measured on the NPC's own horizontal distance from its spawn, never on the target's. The radius is `entity_templates.leash_distance`, or 50 u when the column is NULL (the seed sets none yet).
+
+- Beyond the radius plus a 5 u hysteresis band, or more than 20 u above or below its spawn, the NPC always gives up (`trigger` `beyond_band` / `vertical_cap`).
+- Inside the band it keeps fighting a target it can already hit. It gives up only if it would have to chase further from home (`chase_outward`).
+- A target that dies, disconnects, or stays beyond the NPC's AoI radius for 5 s is dropped. When nobody is left, the NPC goes home (`target_lost`).
+- A player who dies leaves every NPC's threat list at the moment of death (`abilities::death::resolve_death` → `purge_dead_target_from_threat`), and a target carrying `BSF_DEAD` counts as dead whatever its HEALTH reads. A dead player cannot `useItem` (answered with `onErrorCode(0, 0, CONDITION_FEEDBACK_NotLiving)`, the legacy `@mustBeAlive` reply), so a medkit in the Defeat Window can no longer revive the killer's interest (NA24).
+
+The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cellblock Guard's spawn bounded every chase, and an aggressive NPC standing at its spawn leashed every 6 s against a player 60 u away (audit S3, S5).
+
+**On giving up.** The NPC is removed from every player that lists it in `threatened_mobs`, so `BSF_InCombat` clears, the player is sent `onStateFieldUpdate` and regen resumes. Its threat list is cleared, cover is released, and `find_path(npc, spawn)` installs the route home.
+
+**Walking home.** The movement tick walks the route. The client sees the walk from position and velocity only, because no server-to-client movement-type message exists (D-NA10). While Leashing the NPC evades: `generate_threat` refuses it, so damage adds no threat and does not put the attacker into combat (`npc_ai.leash event=damage_ignored`, DEBUG).
+
+**Arrival.** Within 1.5 u of spawn with its route finished, the NPC heals to full, faces its authored spawn heading, clears its cooldowns and goes Idle. For 5 s afterwards the Idle auto-aggro scan ignores players.
+
+**Snap fallback.** When no route can be planned, or the walk takes longer than 20 s, the NPC snaps to spawn through the grid-updating writer and resets the same way (`reason=leash_snap_fallback`). A follower (`follow_target_id` set) is reset where it stands and is not moved. If its leader is still in the space it then goes back to Follow (`reason=follow_resumed`) instead of Idle, and the next AI tick routes it after the leader. If the leader has left, the target is cleared, the NPC goes Idle and `npc_ai.leash event=follow_target_lost` warns (NA42).
+
+**Telemetry.** The leash reports through NA02's detectors (`npc_ai::detectors::leash`): `npc_ai.leash event=enter` (reason, trigger, `nav_path_len`, `npc_to_spawn`), `event=arrived` / `event=snap_fallback` (`arrival`, `walk_secs`, `snap_dist`), `event=loop` (should stay silent) and `event=damage_ignored`. A leash whose trigger is `target_dead` or `target_gone` is not counted toward `loop` (DA-F2, `detectors::leash::counts_toward_loop`). The NPC won or its target left, and the walk home is how every fight ends. Counted, it made any NPC that killed three targets inside 60 s a "loop": every Debug Area arena fighter wrote the WARN from its first rounds on the colo (v2026-10-05.1), standing at its spawn (`npc_to_spawn` 0). The loop NA12 fixed is a fight given up and restarted against a live target, and those triggers still count. Guards: `detector_tests::leash::leashes_after_kills_are_not_a_loop` and the live-DB arena cycle `debug_area_combat::live_db::live_db_debug_area_arena_fight_cycles_without_a_leash_loop`. The leash itself adds `event=replan` and `event=player_combat_exit`. NA02's `threat event=cleared_without_exit` and `npc_ai.idle_parked` should stay silent through a leash; tests pin both. The fight's `decision_outcome=leashed` row carries `trigger`, `npc_to_spawn` and `target_to_spawn`.
+
+### Chase and unreachable targets (NA15)
+
+Code: `crates/cell-combat/src/cell/service/npc_ai/chase/`. The Fighting handler hands a mobile NPC that is out of range or out of line of sight to the chase step.
+
+**Stop distance.** A chase routes to the target moved `max(ability min_range, 1.0 u)` toward the NPC, capped at the ability's `max_range`. The walk ends short of the target, never inside it. Before NA15 a guard walked to the player's own point and stood 0.35-0.7 u from it (audit S10). A cover slot chosen by the cover step is routed as given.
+
+**Ranged step-back (NA32, D-NA15).** Code: `npc_ai/step_back.rs`. A mobile NPC attacking in place, not holding a cover slot, whose chosen ability has a `min_range` or whose abilities are all ranged, steps back when its target is closer than its comfort range, `max(min_range, 2 u)`. It walks straight away from the target, horizontally, to the comfort range plus 3 u (5 u for a guard with no `min_range`), slid along the navmesh so a wall or ledge stops it. It steps at most once every 3 s. During the cooldown it fires from where it is, and inside a hard `min_range`, where the ability cannot fire, it holds and faces the target (`decision_outcome=step_back_cooling`). A step still being walked is not cut short by the attack arm (`step_back_walking`). A slide that gains under 0.5 u (its back to a wall) is not taken (`step_back_cornered`), and the cooldown starts anyway. Melee NPCs, NPCs with a melee swing in their set, stationary NPCs and NPCs in cover never step back; a flanked NPC has given its slot up and steps back like any other. The outcome is `step_back`, or `min_range_backup` inside a hard `min_range` (the pre-NA32 label). Before NA32 only a hard `min_range` stepped back, and every seeded NPC ability has `min_range = 0`, so a player could stand in a guard's face. The chase stop distance is unchanged.
+
+**Repath.** The NPC keeps its route while the goal stays within 5 u horizontally and 1.5 u vertically of the goal the route was planned for (`decision_outcome=hold_no_repath`). A player walking down a ramp toward the NPC changes level quickly and gets a new route. The old test was 5 u in 3D against the last waypoint.
+
+**Unreachable target.** When the target is on another mesh island, Detour returns a partial route. The NPC walks it to the island edge and then holds there, facing the target with zero velocity, and does not request a new route until the target moves (`decision_outcome=hold_unreachable`). After 8 s of holding it gives up and walks home (`npc_ai.transition reason=unreachable`, `decision_outcome=leashed trigger=unreachable`). A route that reaches the target, or an attack, resets the timer. A partial route *home* is walked to its end, and then the NPC snaps to spawn (`npc_ai.leash arrival=snap_partial_route`).
+
+**No route for the other movers (NA41).** Follow, patrol, wander and investigate used to push the raw destination as a single waypoint whenever the pathfinder gave them nothing usable, and the NPC walked through walls toward it. On a world with a navmesh they now slide toward the destination across the mesh with Detour's `moveAlongSurface` and walk a route to where the slide stops, a wall or the edge of their own mesh island (`npc_ai.path_fail fallback=surface_clamped`). A slide that gains under 0.5 u is not taken: the NPC stops with zero velocity and holds (`fallback=held_no_route`, `movement.npc event=stop reason=hold_no_route`), and the next AI tick tries again. A follower keeps its target and the Follow state. Only a world with no navmesh still walks the straight line (`fallback=direct_waypoint`). The ranged step-back takes no step, rather than the raw point, when the NPC is off a mesh. Escort consequence: Col Marsh now stops at a navmesh component boundary instead of walking through the wall to reach the player.
+
+**Facing while holding without a route.** A chaser that stands still because its repath came back degenerate, or because it got no route and has nothing left to walk, turns to face its target on every AI tick, so it tracks a target that moves. An NPC whose final waypoint is the spot it already stands on keeps its yaw instead of turning to due north.
+
+**Off-mesh start.** When the pathfinder cannot start from where the NPC stands (`no_start_poly`: hovering, sunk or a step off the mesh), the NPC is snapped onto the nearest polygon within 2 u horizontally and Â±4 u vertically, and the route is requested once more (`npc_ai.path event=off_mesh_snap`, `npc_ai.path_fail fallback=snapped_to_mesh`). With no polygon that close it goes home, and the leash tick snaps it to spawn.
+
+**Off-mesh target.** A target the destination box cannot place (`no_end_poly`, typically a GM standing on unmeshed props, audit S14) is replaced by the nearest on-mesh point within 8 u horizontally and Â±4 u vertically (`fallback=nearest_on_mesh`). The route cannot reach the target, so the NPC holds at its end if it still cannot hit from there.
+
+**Degenerate repath.** A route that comes back as a single point clears the stale route (`fallback=path_cleared`), and the NPC holds.
+
+### Investigating (State 2)
+
+A mob heard a noise or detected suspicious movement but has not confirmed a threat. It should navigate to `POI`, look around for a set duration, and return to `Home` if nothing is found.
+
+Evidence: `POI` (VECTOR3) property holds the destination, `investigateTimerID` stores a C++ timer controller, `hearingRadius` controls detection range, `onNoise()` is a declared cell method that would set `POI` and transition to this state.
+
+### Leashing (State 4)
+
+The mob's current target has moved beyond pursuit range or out of LOS. The mob abandons the fight and returns to `Home`, clearing its threat list on arrival.
+
+Evidence: `Home` (VECTOR3) stores the spawn anchor, `maxIdealRange` defines engagement distance. Standard MMO pattern: if distance to Home exceeds `maxIdealRange * 2`, cancel pursuit, navigate Home, clear `self.threat`, transition to Idle.
+
+### Patrol (State 8)
+
+The mob follows a scripted waypoint path between spawn locations.
+
+Evidence: `patrolPaths` (dict) stores one or more named path definitions, `currentPatrolPath` tracks the active path index, `patrolMovementType` controls speed/animation. DB columns `patrol_path_id` and `patrol_point_delay` in `entity_templates`. C++ methods `startPatrol(path, delay)` and `cancelPatrol()` are declared on the cell entity.
+
+### Wander (State 9)
+
+Random movement within a radius of `Home`. The mob picks a random nearby point, navigates there, waits a random delay, then picks another point.
+
+Evidence: `Home` property provides the anchor, `nextWanderTime` property stores the timestamp of the next wander move. Recommend: use `findPathTo()` with a randomly offset position from `Home`, bounded by `minIdealRange`.
+
+### Follow (State 7)
+
+The mob maintains a set distance and angle behind a target entity (used by pets and escort NPCs).
+
+Evidence: `currentlyFollowing` (bool), `followTarget` (entity reference), `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType` properties all defined in `.def`.
+
+**Runtime: an escort survives a fight (NA42).** A mob in Follow that takes a hit is preempted into Fighting and keeps its `follow_target_id`. When the fight ends, the leash resets it where it stands (it is never walked or snapped home) and returns it to Follow while its leader is still in the space; with the leader gone it clears the target and idles. Before NA42 every leash ended in Idle, which the dispatcher never promotes back to Follow, so one stray hit ended an escort for good; chain 1302 (click Zuritska to re-arm her follow) predates the fix and is now a harmless redundancy. A `being` follower such as Col Marsh never enters combat: `generate_threat` refuses beings, so a hit leaves him in Follow and still walking. None of the 24 seeded `being` templates has an ability set, so no being could have fought back anyway.
+
+**Pets (PT-05).** A pet (wire class `SGWPet`, an NPC with `PetState`) runs through the same tick with an owner-relative pre-pass ahead of the state match (`npc_ai/pet/`). Out of a fight it is always in Follow on its owner with a 2-5 u band, and it teleports beside the owner when more than 40 u behind or on another floor, at most once every 5 s. Its stance decides what it engages: Passive nothing (`generate_threat` refuses its threat, so even a hit does not engage it), Defensive whatever fights its owner or itself, Aggressive also its owner's target once the owner is in combat and hostile NPCs within 15 u. Its leash is measured from the owner, not `spawn_position`, and a fight ends straight back in Follow: no walk home, no evade, no heal. Its fights put the owner in combat. A pet is never hostile to players, is always ticked when Idle, and skips abilities its owner toggled off. See [pet-system.md](pet-system.md#pet-ai-pt-05).
+
+### Submit (State 10)
+
+A controlled shutdown state for mobs that surrender rather than fight to the death (e.g., scripted encounters). The mob stops fighting and signals completion to the mission system before despawning.
+
+Evidence: state is defined in the enum; no supporting properties are uniquely tied to this state.
+
+### Error (State 11)
+
+A diagnostic recovery state for when the AI reaches an inconsistent condition.
+
+Evidence: Cell methods `enterErrorAIState()` and `leaveErrorAIState()` are declared. Properties `errorStateReason`, `errorStateDescription`, `errorAIState`, and `errorTime` are defined for logging the failure context.
+
+### Despawning (State 6)
+
+Controlled removal of the mob from the world, distinct from death. Allows animations and cleanup to complete before the entity is destroyed.
+
+Evidence: `despawnFlag` (bool) property, `despawnTimerID` controller, `DespawnWhenFree()` cell method, `decayTimerID` for corpse removal after death.
+
+---
+
+## Navigation Integration
+
+The C++ cell layer exposes these navigation methods to Python:
+
+| Method | Purpose |
+|--------|---------|
+| `findPathTo(position)` | Compute and begin moving along a navmesh path |
+| `findDetailedPathTo(position)` | Higher-fidelity path with full waypoint list |
+| `addWaypoint(position)` | Append a waypoint to the current path |
+| `cancelMovement()` | Stop all movement immediately |
+
+None of these are called by the current Python mob AI. The `navControllerID` property is reserved for a C++ navigation controller that is never created. The only movement primitive used is `lookAt(target)`, which rotates the mob's yaw toward a target entity without translating.
+
+The practical result is that all mobs are stationary during combat. They rotate to face their target and fire, but do not close distance, retreat to cover, or reposition.
+
+### Rust: line of sight in the fight tick
+
+The Python mob AI never checked line of sight: `classifyHostileAbility`
+says `# TODO: Check distance, LOS`, and `AbilityManager` says
+`# TODO: Do LOS checks on target`. The client still has the feedback codes
+`CONDITION_FEEDBACK_LOS = 39` and `CONDITION_FEEDBACK_NoLOS = 40`, and the
+GM surface has `testLOS`, `onLOSResult` and `toggleCombatLOS`. So the
+shipped server probably did check it.
+
+In a world without a `.occ` file, Cimmeria's occlusion source is the
+navmesh raycast (`NavMesh::line_of_sight`), which returns `Clear`,
+`Blocked` or `Unknown`. Every shipped client world has one now; see
+[collision-geometry line of sight](#rust-collision-geometry-line-of-sight-na27).
+It has no heights for the holes Recast cuts around furniture, so it cannot
+tell a waist-high desk from a wall. Against the extracted Cellblock
+collision geometry, at 1.5 m eye heights on one storey, 45% of its
+`Blocked` verdicts were false and 0.15% of its `Clear` verdicts were
+false.
+
+The fight tick (`npc_ai/fight.rs`) calls
+`SpaceManager::attack_line_of_sight`:
+
+| Attacker | `Clear` | `Unknown` (endpoint off the mesh) | `Blocked` |
+|---|---|---|---|
+| Mobile NPC | fires | fires | paths toward the target |
+| Mobile NPC at its cover slot (NA23) | fires | fires | the verdict is from the slot's peek point past the prop, or the NPC's own ray if that one is clear; `Blocked` holds fire (`cover_no_shot`) and gives the slot up after 3 s |
+| Stationary NPC (`spawnlist.is_stationary`) | fires | fires | fires if the target is within 4 u of its height, otherwise holds (`stationary_holds`) |
+
+A stationary NPC cannot walk around the obstacle, so a false `Blocked`
+would silence it for the whole fight. This is what happened to the Find
+Ambernol drone at the med-station desk (NPC AI restoration NA16, audit
+S11, decision D-NA11). The cost is that a turret that is already fighting
+can shoot through a real wall on its own storey.
+
+The `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule
+that acted on it (`los_policy`: `strict`, `stationary`,
+`stationary_relaxed`, `stationary_other_storey`, or `cover_peek` for a
+mobile NPC standing at its cover slot, NA23). A drone firing across
+the desk logs `los=blocked los_policy=stationary_relaxed`; a guard in cover
+fires on `los=clear los_policy=cover_peek` and holds on
+`los=blocked los_policy=cover_peek`. NA22's `in_cover_slot` fired from a
+slot whatever the verdict, and a guard shot a player through two walls
+(UAT-1). Where a world ships an occluder, these navmesh rules are replaced
+(NA27, below).
+
+Ability launch (`use_ability/handle.rs`) does not re-check an NPC's line
+of sight: the fight tick checks it in the same tick, just before the
+launch. Since NA31, a player's targeted ability is checked at fire time
+against the occluder and refused with `onErrorCode` 39; see
+[combat-system.md](combat-system.md#fire-time-line-of-sight).
+
+### Rust: collision-geometry line of sight (NA27)
+
+A world that ships `data/spaces/<world>.occ` answers every NPC
+line-of-sight question from its collision geometry, eye to eye
+(`space_manager/occlusion.rs`, decision D-NA13). Since NA31 each eye is at
+the being's body-set height (`resources.body_sets.eye_height`): 1.81 m for a
+human male, 2.12 m for a Jaffa male, 0.15 m for a rat, and 1.5 m for a
+body set with no measured mesh. See
+[being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md).
+The navmesh workarounds above do not apply there:
+
+| Check | With an occluder |
+|---|---|
+| Idle aggro scan and assist | the occluder verdict; `Unknown` (outside the trimmed explorable area) rejects `no_los` (D-NA08) |
+| Fight tick attack check | `los_policy=occluder`: `Clear` fires, `Blocked` holds (a mobile NPC paths toward the target). No stationary relaxation (D-NA11). `Unknown` takes the navmesh rules above. |
+| NPC at a cover slot | looks from its own eyes over the prop; no peek point (D-NA12) |
+
+On the Castle_CellBlock and Castle sweeps it had no false clears, and
+about 1% of truly clear pairs read blocked, mostly rays grazing a wall
+edge. The Find Ambernol drone fires over the med-station desk, and
+`Hallway01_Guard` sees over its counter to 13.6 u. `Hallway02_Guard` does
+not see through the hallway walls. `npc_ai.los` rows say
+`source=occluder` with `eye_height_used` and `target_eye_height_used` (the
+two body-set eyes; NA27's measurements were taken at 1.5 m on both ends,
+and NA31 moved the eyes of Jaffa and humans higher, so they see over
+slightly more). The file is paged: only the
+64 m pages near players are unpacked (`npc_ai.occluder event=residency`).
+Details in
+[the NA27 worknote](../analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
+
+---
+
+## Cover System
+
+Cover nodes are spatial graph nodes placed in the world that provide defensive bonuses. The design supported mobs finding and reserving cover positions before or during combat.
+
+Relevant properties: `useCover` (bool), `bCoverFromTarget` (bool direction flag), `CombatStance` (enum), `reservedCoverNode` (node reference).
+
+Relevant cell methods: `onReserveCoverSlot()`.
+
+The Python reference implemented none of this. The Rust server does (NA22); the design is in [architecture/cover-system.md](../architecture/cover-system.md). In short:
+
+- **Who:** `entity_templates.use_cover`, or a hostile (`faction = 10`) NPC when it is NULL. Stationary NPCs, props and melee-only NPCs never take cover.
+- **Spawned in cover:** an NPC authored within 1.5 u of a cover marker spawns holding that slot and keeps it while its target is in front of the cover and in range.
+- **Seeking cover:** in a fight, an NPC takes the best free slot that reaches its target (within attack range less 2 u), whether or not it already has a shot. With a shot it walks at most 10 u, and after a seek that finds nothing it waits 4 s before looking again.
+- **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing. In its slot it takes 10-60% less damage (25% for the typical slot, 35% with the stance) from shots the cover faces, and nothing off a flanking shot (NA32, D-NA15a, [combat-system.md](combat-system.md#cover-as-damage-reduction-na32)). An NPC holding its slot does not step back from a close target.
+- **Sight from cover (NA23):** an NPC at its slot looks from the slot's peek point past its prop, for aggro, assist and the shot alike. A wall past the cover still blocks. With no line it holds fire, and after 3 s gives the slot up. A slot is only picked if the NPC would have a shot from it.
+- **Leaving:** the slot and the stance go when the target flanks the cover (20 degrees past side-on, NA23) or leaves attack range, after 3 s with no shot, and on leash, death or surrender. A slot left as flanked, blind or unreachable is not re-taken by the same NPC for 6 s.
+- **Pose:** there is no server-to-client pose message. Whether the client crouches an NPC standing at a marker is an open owner experiment.
+
+`CombatStance` is still set but not acted upon.
+
+---
+
+## Behavior Event System (Not Implemented)
+
+`mobBehaviorEventSet` stores one or more named event sets that define data-driven behavior triggers. The design intent appears to be a table-driven system where events (e.g., "player enters radius", "health drops below 50%") trigger scripted responses (e.g., bark dialog, call for help, switch ability set).
+
+Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared for runtime modification of the active event sets. No behavior set logic is implemented.
+
+---
+
+## Mob Groups (Not Implemented)
+
+`mobGroup` property and `mobJoinGroup()` cell method are defined for coordinating multiple mobs as a unit. This would enable pack behavior (all members assist when one is attacked), coordinated patrol paths, and shared threat lists. No group logic is implemented.
+
+---
+
+## Implementation Status Summary
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| State machine tick loop | DONE | `doAiAction()` dispatches by state |
+| Spawning state | DONE | Loads ammo, transitions to Idle |
+| Idle state | DONE | Waits for `threatGenerated()` |
+| Fighting state | DONE | Target selection, ability fire, 0.5s retry |
+| Dead state | DONE | Loop exits cleanly |
+| Threat accumulation | DONE | Damage -> threat formula, Idle->Fighting transition |
+| Top-threat targeting | DONE | Linear scan with dead-entity pruning |
+| Ability classification | DONE | Type/targeting/cooldown/ammo checks |
+| Ammo management | DONE | Load on spawn, consume per shot, auto-reload |
+| Combat exit | DONE | Threat empty -> Leashing (walk home) -> Idle, with the player-side combat drain. Python went Idle in place; NA12 diverges on purpose because Rust NPCs move (D-NA03). |
+| Loot on death | DONE | Loot table referenced, no tap check |
+| Aggression override | DONE (broadcast; timed revert still unported) | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. NA33: broadcast to witnesses on change and replayed on AoI entry. No timed revert (`overrideAggression`'s scheduled-revert helper, not ported); see [Wire: broadcast to witnesses](#wire-broadcast-to-witnesses-na33-d-na16). |
+| lookAt() rotation | DONE | Mob faces target during combat |
+| Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
+| Chase path robustness | DONE | NA15: stop distance, level-aware repath, hold then give up at a partial route, partial route home, off-mesh start and target recovery, degenerate repath clears the route. See [Chase and unreachable targets](#chase-and-unreachable-targets-na15). |
+| NPC-vs-NPC combat | DONE | #1009: an NPC engages NPCs its faction reaction reads HOSTILE (the table with the NPC as viewer), found by a grid-bounded scan while a player watches; normal threat, abilities, leash and death; NPC-only kills pay nothing. See [NPC-vs-NPC combat](#npc-vs-npc-combat-1009). |
+| Proactive aggro detection | DONE | NA13: hostile Idle NPCs (override, else faction reaction) scan witnesses every 2 s through the radius (18 u default, `entity_templates.aggro_radius`), vertical band (4 u), fail-closed LoS and GM-switch gates, and seed 1.0 threat on the closest. See [Proximity aggro scan](#proximity-aggro-scan). |
+| Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
+| Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |
+| Three-bucket ability selection | DONE | `choose_npc_ability` partitions known abilities into usable / cooling / needs-ammo and picks the first off-cooldown ID. See [#342](https://github.com/SandboxServers/Cimmeria/issues/342). |
+| Multi-ability sets | DONE | `ability_set_abilities` is keyed on `(ability_set_id, ability_id)`, so one set holds N abilities and the selector walks them all in ascending id order. Harset packet H09 widened the key and gave set 4 the staff pair (`584` ranged + `710` melee) and set 5 the ribbon pair (`711` melee + `712` ranged). |
+| Melee reach gate | DONE | `choose_npc_ability_within_reach` will not select an `is_ranged = false` ability for a target beyond `NPC_MELEE_RANGE` (3 m), so an NPC never plays a weapon swing at a target it cannot touch. When nothing is in reach it falls back to the unfiltered pick, whose short `max_range` sends a mobile NPC down the chase arm and a stationary one into `stationary_holds`. See the section below. |
+| `setMovementType` AoI broadcast | REMOVED | #779 (NA10) stopped sending it. The old broadcast went out as witness method index 1, which is `onSequence` on every NPC type, so each Fighting, Leash, Patrol or Follow entry sent witnesses a truncated `onSequence`. `broadcast_movement_type` (`cell/abilities/messaging.rs`) now records `last_movement_type` for telemetry and sends nothing (test `broadcast_movement_type_records_the_cache_and_sends_nothing`). The client animates from the velocity on each `EntityMoved`; a stopped NPC gets zero velocity (`npc_ai::stop_npc_movement`). The client has no NetIn `SetMovementType` handler. Originally closed [#270](https://github.com/SandboxServers/Cimmeria/issues/270). |
+| NPC respawn | DONE | `npc_respawn_tick` (1 Hz) reads `respawn_secs` (COALESCE `spawnlist`, `entity_templates`, minimum 3s enforced via CHECK). On NPC death the `combat::mark_npc_dead` helper stamps `respawn_at = now + respawn_secs`. Tick promotes Dead → Idle, restores HP / FOCUS / state / interaction-type / facing direction, snaps position to spawn, closes any open loot UIs on still-looting players, and re-creates the NPC on every witness: `LeftAoI`, then the AoI-enter introduction a new witness gets (`SpaceManager::introduction_events`: `EnteredAoI` with the createOnClient cascade carrying the spawn position, cleared state field, full HEALTH/FOCUS and restored interaction type, then the per-witness replays). The death burst's `onSequence` Entity_Death leaves the client pawn in its death pose and no property delta undoes it; before this the respawned NPC lay on the floor, alive and hard to target (2026-09-28 Castle colo playtest). Witness sets are untouched, so the next AoI tick sees no enter or leave. The `spawner.npc_respawn` info log carries `npc_id`, `template_id`, `witness_count` and `recreated`. `NULL` columns → one-shot mob (corpse persists). Effect-script-driven HP-to-0 paths that bypass `damage_apply` (e.g., `scripts::MeleeDamage`) also bypass respawn — future content using those paths must call `combat::mark_npc_dead` explicitly. |
+| Investigating state | DONE | `npc_ai_investigate` handler routes the NPC to a content-set `poi`, dwells 5s (`INVESTIGATE_DWELL_SECS`), returns to Idle. Reached via the `SetNpcPoi` content action; the `onNoise` cell-method hook for in-game audio is deferred. |
+| Patrol state | DONE | `npc_ai_patrol` walks the loop from `entity_templates.patrol_path_id` → `point_set_points`. Dwells `patrol_point_delay` at each waypoint. Threat preemption preserves `patrol_next_index` so the post-fight return resumes the route. |
+| Wander state | DONE | `npc_ai_wander` samples a random point within `wander_radius` of `spawn_position`, validates against the navmesh, dwells a random duration in `[wander_min_dwell_secs, wander_max_dwell_secs]`. Off-mesh candidates fall back to `spawn_position`. |
+| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). A route in flight is kept while it still ends within max(5 u, `follow_max_distance`) horizontally and 4 u vertically of the target, and replanned once the target has left its end behind (`follow_repath_stale`), so an escort whose leader respawns elsewhere turns toward the leader instead of walking the old route out. Reached via the `SetFollowTarget` content action. A `being`-class follower (Col Marsh, template 10) is ticked too: `ai_driven_npc_entity_ids` admits a `being` in Follow / Patrol / Wander / Investigating / Despawning / Submit / Error, never in Idle (props) or Fighting (NA24). A leash that ends a follower's fight returns it to Follow while its leader is in the space, and a being is never pulled into combat (NA42). |
+| Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |
+| Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |
+| Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |
+| Cover system | DONE | `crates/cell-cover/src/cell/cover/` (the spawn hold and Cover Stance: `crates/cell-world/src/cell/cover/stance.rs`) — world-space markers per world (NA21, `cover_extract`), uniform-grid spatial index, slot reservation with auto-release-prior semantics, and node scoring. NA22: `use_cover` from `entity_templates.use_cover`, the spawn hold, the in-range seek of a slot that reaches the target, arrival stop + Cover Stance (ability 1451), release (and stance removal) on flank, out of range, leash, death and surrender. See [architecture/cover-system.md](../architecture/cover-system.md). Pose on the client is unconfirmed. |
+| NPC movement speed | PARTIAL | `move_speed` is per template: `entity_templates.move_speed`, defaulting to `0.6` units per 100 ms tick (6 units/sec) when NULL (Col. Marsh is `0.9`). `npc_movement_tick` scales it by the movement-speed stat (`effective_move_speed`). It never varies by AI state, so a leash walk home, a patrol and a chase all move at the same speed. No movement type reaches the client (see the `setMovementType` row above); the client picks the gait from the `EntityMoved` velocity. The seed has per-world speeds (`resources.worlds.walk_speed` ≈ 2.069, `run_speed` = 8.125) that nothing reads for NPCs. |
+| Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared; deferred. |
+| Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared; deferred. |
+| Tapping (kill credit) | DONE | Content-engine kill chains supersede the Python tap design. |
+| Group mate threat assist | NOT IMPL | Methods declared, no logic. |
