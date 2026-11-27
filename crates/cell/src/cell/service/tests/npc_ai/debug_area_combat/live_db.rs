@@ -41,7 +41,7 @@ async fn da04_rows(pool: &sqlx::PgPool) -> Vec<SpawnRecord> {
         .collect()
 }
 
-fn with_prefix<'a>(rows: &'a [SpawnRecord], prefix: &str) -> Vec<&'a SpawnRecord> {
+pub(super) fn with_prefix<'a>(rows: &'a [SpawnRecord], prefix: &str) -> Vec<&'a SpawnRecord> {
     rows.iter()
         .filter(|r| r.tag.as_deref().is_some_and(|t| t.starts_with(prefix)))
         .collect()
@@ -188,7 +188,7 @@ async fn live_db_debug_area_respawn_timers_resolve() {
 
 /// A meshless fight space with the seeded abilities, effects and loot, and a
 /// player watching from `watcher`.
-async fn fight_space(pool: &sqlx::PgPool, watcher: [f32; 3]) -> SpaceManager {
+pub(super) async fn fight_space(pool: &sqlx::PgPool, watcher: [f32; 3]) -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     crate::test_support::install_effect_scripts(&mut mgr);
     mgr.parse_spaces_xml(
@@ -212,7 +212,7 @@ async fn fight_space(pool: &sqlx::PgPool, watcher: [f32; 3]) -> SpaceManager {
 const PLAYER: u32 = 1;
 
 /// Spawn template `template_id` as `id` at `(x, 0, z)`, Idle.
-fn spawn(
+pub(super) fn spawn(
     mgr: &mut SpaceManager,
     templates: &HashMap<i32, SpawnRecord>,
     id: u32,
@@ -234,7 +234,7 @@ fn spawn(
 /// One fight pass: an AI tick, any warmup fired at once, then cooldowns
 /// cleared. With 559's 1.5 s cooldown under the 2 s AI cadence, a pass is
 /// one AI tick of real time.
-async fn pass(
+pub(super) async fn pass(
     mgr: &mut SpaceManager,
     npcs: &[u32],
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -389,7 +389,7 @@ async fn live_db_debug_area_combat_aggro_radii() {
 }
 
 /// Set `id`'s Health and Focus pools.
-fn set_pools(mgr: &mut SpaceManager, id: u32, health: i32, focus: i32) {
+pub(super) fn set_pools(mgr: &mut SpaceManager, id: u32, health: i32, focus: i32) {
     let e = mgr.get_entity_mut(id).unwrap();
     e.stats
         .get_mut(HEALTH)

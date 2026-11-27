@@ -1,0 +1,16 @@
+--
+-- Debug Area (world 1300) Z12 combat reference range: NC-03, templates 1380-1389.
+-- Plan: docs/analysis/npc-combat-reference/README.md (D-NC9). Reference:
+-- docs/content/debug-area.md (Z12). Spawns: Worlds/Seed/spawnlist_debug_area_reference.sql.
+--
+
+-- 1380 and 1381 are template 1371 (the DA-04 Praxis Jaffa: staff set 4, WP-Jaffa.WP_Staff_Plasma_4A)
+-- with three changes: faction 10 (the hostile-to-players faction, as the real NID guard 24 and
+-- prisoner-retrieval unit 4 carry), a 20 s respawn, and the names 8917 "Jaffa Guard" and 8918
+-- "Jaffa Lieutenant". Body, components, colours, tint and mesh stay byte-identical to 1371 so the
+-- lineup actor guard needs no new look. They are the reference for the Jaffa staff presentation.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover, aggro_radius) VALUES (1380, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 5, 0, 10, 8917, NULL, NULL, NULL, 'DebugArea Ref Praxis Jaffa Guard', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 20, false, 28);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover, aggro_radius) VALUES (1381, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 5, 0, 10, 8918, NULL, NULL, NULL, 'DebugArea Ref Praxis Jaffa Lieutenant', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 20, false, 28);
+
+-- Reserve 1382-1389 for the reference range; the sequence never hands them out.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 1389), true);

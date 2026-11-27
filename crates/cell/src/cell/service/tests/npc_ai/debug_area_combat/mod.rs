@@ -24,6 +24,7 @@ mod arena_pull_map;
 mod cover;
 mod death_respawn;
 mod live_db;
+mod reference;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
