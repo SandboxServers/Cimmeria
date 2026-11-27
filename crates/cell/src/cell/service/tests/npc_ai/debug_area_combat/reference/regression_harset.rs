@@ -14,10 +14,11 @@ mod live_db {
     const HARSET_WORLDS: [i32; 2] = [57, 8];
 
     /// Every Harset Jaffa spawn in worlds 57 and 8 loads ability set 4 as
-    /// [584, 710], faction 1 and no `WP-` component. D-NC3 is not applied
-    /// yet; NC-22 updates the faction and component asserts. Revert proof:
-    /// changing set 4, a faction, or adding a `WP-` component fails here by
-    /// name; dropping the spawn rows of either world fails the coverage check.
+    /// [584, 710], faction 1 and the staff component `WP-Jaffa.WP_Staff_Plasma_4A`
+    /// (D-NC3, NC-22: RECONSTRUCTED, not recovered original behaviour). Revert
+    /// proof: changing set 4 or a faction, or dropping the staff component,
+    /// fails here by name; dropping the spawn rows of either world fails the
+    /// coverage check.
     #[tokio::test]
     async fn live_db_regression_harset_jaffa_profiles() {
         let pool = require_db_or_skip!();
@@ -61,8 +62,11 @@ mod live_db {
             assert_eq!(r.ability_ids, vec![584, 710], "{name} loads set 4");
             assert_eq!(r.faction, Some(1), "{name} is faction 1");
             assert!(
-                !r.components.iter().flatten().any(|c| c.starts_with("WP-")),
-                "{name} carries no WP- component"
+                r.components
+                    .iter()
+                    .flatten()
+                    .any(|c| c == "WP-Jaffa.WP_Staff_Plasma_4A"),
+                "{name} carries the staff component"
             );
         }
     }
