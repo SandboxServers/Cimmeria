@@ -107,7 +107,7 @@ fn reference_profiles_today() {
         ("DebugArea_Ref_PRU", vec![221]),
         ("DebugArea_Ref_JaffaGuard", vec![584, 710]),
         ("DebugArea_Ref_JaffaLieutenant", vec![584, 710]),
-        ("DebugArea_Ref_ScavDog", vec![]),
+        ("DebugArea_Ref_ScavDog", vec![1433]),
     ] {
         assert_eq!(ref_row(&records, tag).ability_ids, abilities, "{tag}");
     }
