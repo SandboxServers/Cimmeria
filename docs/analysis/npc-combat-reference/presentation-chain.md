@@ -146,7 +146,7 @@ use is test item 2143 'test 2', items.sql:12437), and `item_monikers` is `{}`,
 so the weapon-family rule has no input.
 
 The sequences are the same set 300 as the Jaffa melee ability 710
-(table above). Only the link ability to set is RECONSTRUCTION, from
+(table above). Only the link ability to set is RECONSTRUCTED (PR #822 Tier 3), from
 animation-links.md:74.
 
 Effect 1717 `effects.sql:3012`: name `Strike Damage`, desc `-125F -15H`,
@@ -158,7 +158,7 @@ ability is on 300 and the effect on 301, which is the source/target pair.
 
 Ability row `abilities.sql:5036`: `ABILITY_TYPE_DD`, cooldown 3, melee,
 `moniker_ids` `{1470900795}`, `event_set_id` 300, effects `{1092}`. No
-`ability_set_abilities` row names it. Like 1433, it is RECONSTRUCTION at
+`ability_set_abilities` row names it. Like 1433, it is RECONSTRUCTED (PR #822 Tier 3) at
 set 300 (animation-links.md:74, "creature bodies need a playtest").
 
 Effect 1092 `effects.sql:2471`: name `Bite Damage`, desc `-125F -15H`,
@@ -216,7 +216,7 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
    creature-appropriate sequence exists.
 5. **No weapon-family rule for 1433 and 983.** Their `item_monikers` is
    empty and their `moniker_ids` value 1470900795 has no `monikers` row, so
-   the family cannot be read from the seed. Set 300 is a judgement (RECONSTRUCTION, D-NC5).
+   the family cannot be read from the seed. Set 300 is a judgement (RECONSTRUCTED, D-NC5).
 6. **Ability and effect sets differ by design.** 1433 is on 300 and its
    effect 1717 on 301. 983 is on 300 but its effect 1092 has no set (Gap 1).
    A source/target pair is not a mismatch. The same holds for 559/621 (15/289), 584/646 (3/262),
