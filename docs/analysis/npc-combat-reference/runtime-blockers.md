@@ -51,18 +51,20 @@ packet is a sketch for the architect, not a spec.
   `RangedEnergyDamage` gives `DT_ENERGY`) is used only for DoT pulses
   (`effects/pulsing/pulse.rs:251`), never on a direct hit.
 - So 221 Energy Shock (effect 264, script `RangedEnergyDamage`,
-  `db/resources/Effects/Seed/effects.sql:7813`) lands as physical: the physical absorb pools drain instead of the
-  energy ones, and the client gets a physical `damage_code`. Script damage takes no
-  armour factor (`effect_scripts.rs:206-266` only runs the shield absorb), so AF
-  is not part of this bug; it is for NVP effects (item 1).
+  `db/resources/Effects/Seed/effects.sql:7813`) lands as physical: the physical
+  absorb pools drain instead of the energy ones, and the client gets a physical
+  `damage_code`. Script damage takes no armour factor
+  (`effect_scripts.rs:206-266` only runs the shield absorb), so AF is not part
+  of this bug; it is for NVP effects (item 1).
 - Smallest fix (proposed packet): in `damage_apply/mod.rs`, when `shot` is
   `None`, take the type from the effect's script per effect
   (`script_damage_type(effect.script_name)`), not one type per hit; the
   `apply_damage_scripts` call at `mod.rs:305` is the place. Test: a hit by 221
-  at a target with `ABSORB_ENERGY` set and `ABSORB_PHYSICAL` 0 reports
-  `damage_code == DT_ENERGY` and the energy pool drains; with the fix reverted
-  the pool is untouched and `damage_code == DT_PHYSICAL`, so the test
-  fails. Files: `damage_apply/mod.rs`,
+  at a target with `ABSORB_ENERGY` set to less than the hit's damage and
+  `ABSORB_PHYSICAL` 0 reports `damage_code == DT_ENERGY` and the energy pool
+  drains to 0 (the rest must pass through, or no result is returned:
+  `effect_scripts.rs:252-254`); with the fix reverted the pool is untouched and
+  `damage_code == DT_PHYSICAL`, so the test fails. Files: `damage_apply/mod.rs`,
   `effect_scripts.rs`, `damage_apply/*_tests.rs`. NVP-only effects have no
   script, so they stay physical.
 
@@ -74,10 +76,13 @@ packet is a sketch for the architect, not a spec.
   resolver, then fires `entity_death` (`pulse.rs:181`).
 - The exception is by design: when the DoT's invoker credits no player (an NPC
   or an NPC pet's DoT) the event is skipped (`pulse.rs:176`), or the target has
-  no tag (`pulse.rs:147-149`): the corpse and loot still happen, but no
-  event. A player is refused (`death/mod.rs:633`): a DoT never kills a player through this path.
-- Not re-run; the death-event test is `a_lethal_pulse_raises_the_death_then_drains_health_below`
-  (`pulsing/tests.rs:712-739`); the surrender and finish cases are at `:561-640`.
+  no tag (`pulse.rs:147-149`): the corpse and loot still happen, but no event. A
+  player is refused (`death/mod.rs:633`): a DoT never kills a player through
+  this path.
+- Not re-run; the death-event test is
+  `a_lethal_pulse_raises_the_death_then_drains_health_below`
+  (`pulsing/tests.rs:712-739`); the surrender and finish cases are at
+  `:561-640`.
 
 ## 4. NPC LOS and target validation: not a bug
 
@@ -87,9 +92,9 @@ packet is a sketch for the architect, not a spec.
 - Dead, gone and out-of-perception targets drop the engagement
   (`fight_target.rs:112-144`, checks `BSF_DEAD` and `HEALTH <= 0`). The launch
   path refuses a dead target (`use_ability/handle.rs:284`), runs
-  `beneficial::target_gate` (`handle.rs:290-306`), which is player-only: NPC attackers are deliberately not
-  gated (`beneficial.rs:420-422`, `:481`); it then checks range
-  (`handle.rs:311`).
+  `beneficial::target_gate` (`handle.rs:290-306`), which is player-only: NPC
+  attackers are deliberately not gated (`beneficial.rs:420-422`, `:481`); it
+  then checks range (`handle.rs:311`).
 - `handle_use_ability` itself has no LOS test, so a caller that skips the fight
   tick has none. The 500 ms retry does not skip it: `npc_ai_retry_sweep` re-runs
   the whole `npc_ai_fight` (`dispatch.rs:401`), LOS included.
