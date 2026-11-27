@@ -12,7 +12,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
   `RequireWeaponEvidence`; the other 470 would hold fire.
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
-- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 40 candidates (4 cell-world, 5 cell-combat, 31 other).
+- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 40 candidates (4 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 10 are unaffected and 28 need no fix.
 
 ## Method
 
@@ -28,6 +28,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
   (the C1 `RequireWeaponEvidence` rule).
 - Callers and fallback tests: a scanner that strips comments and literals, then matches
   brace-delimited fn and `cfg(test)` module bodies. It is a heuristic, not a compile.
+- Evidence classes (README § Evidence classifications): the template rows, components, factions and spawn counts are EARLIEST LEGACY DATA (the `db/resources` seeds). The caller and test lists, and what `spawn_npc` adds, are CURRENT CIMMERIA IMPLEMENTATION (code, heuristic scan). The `keeps 592` / `holds fire` verdict is RECONSTRUCTED (C1 rule applied to seed components; a prediction for NC-30). The `scripted` flag is UNRESOLVED (no seed column). No row is ORIGINAL CLIENT VERIFIED or STRONGLY INFERRED.
 
 ## 1. Templates with NULL `ability_set_id`
 
@@ -561,241 +562,84 @@ Body family and verdict counts:
 
 ## 2. Production callers of `SpaceManager::spawn_npc`
 
-No production caller exists. Every call is gated as shown below, so the table lists the
-gated files only (count of call sites per file).
+No production caller exists. Every call is gated as shown below, so the table lists the gated call sites by crate.
 
-| File | Call sites | Gate |
-|---|---|---|
-| crates/cell-combat/src/cell/abilities/cone_aoe/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/damage_apply/ammo_splash_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/death/npc_only_kill_tests.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/death/pet_credit_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/death/pet_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/deployable/tests/mod.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/dispatch/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/movement_type_log_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/owner_pet/tests/refusals.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/beneficial.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/content_events.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/duel_gate.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/npc_only_rows.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/pet_kill_credit.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/registered_pet_kill_credit.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/abilities/use_ability/tests/summoned_pet_kill_credit.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/auto_cycle.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/damage_credit.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/threat/aggro.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/threat/player_combat.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/threat/release_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/combat/threat/training_dummy_release.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/effects/pulsing/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/aggro_acquired.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/fight.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/follow.rs | 11 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/ground_endpoint_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/path_failure/tests.rs | 14 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/pet/tests/hostility.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/cell/service/npc_ai/pet/tests/mod.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-combat/src/test_fixtures/npc_surrender.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/gm/tests/abilities.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/gm/tests/combat_debug.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/gm/tests/query.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/gm/tests/travel.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/bookmark.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/ch13_despawn_id.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/despawn_releases_combat.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/mod.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/p02.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/p18.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/p26.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/pt07_giveability.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-console/src/cell/console/tests/spawn_authoring.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/castle_702_704_executor.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/class_start_sgc/firearm_body.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/debug_hub.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/debug_hub_mail_clerk.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/gc1_escort.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/chain_replay_tests/mission_622_core_tutorial.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/event_dispatch/combat_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/event_dispatch/lifecycle/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/black_market.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/ability_grant.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/ability_granter.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/effects.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/grant_cash.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/mail.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-content/src/cell/content/executor/tests/npc_state.rs | 12 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-duel/src/cell/duel/tests/engage.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-duel/src/cell/duel/tests/interactable.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/bank/telemetry_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/bank/tests.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/dhd.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/dispatch/tests/interaction_only_bind.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/dispatch/tests/mod.rs | 8 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/loot/restore_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/loot/tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/trainer.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-interactions/src/cell/interactions/vendor.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/being.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/black_market/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/combat/tests/aoe_health_below.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/crafting/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/dialog_choice_gate_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/hostile_attack_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/interact_heading_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/interact_hostiles_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/interact_pin_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/interact_pose_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/interaction/npc_routing_tests.rs | 4 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/respec_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/store_ops_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/train_feedback_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/train_spend_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/vendor/train_trainer_agreement.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-methods/src/cell/cell_methods/player/world/tests/auto_cycle.rs | 4 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-pets/src/cell/cell_methods/player/pet/tests/guard.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-pets/src/cell/cell_methods/player/pet/tests/invoke.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-pets/src/cell/cell_methods/player/pet/tests/mod.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-pets/src/cell/cell_methods/player/pet/tests/telemetry.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/black_market.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/deployables/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/interaction_pose/approach_emit_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/interaction_pose/emit_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/interaction_pose/hostiles_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/pets/tests/class_filters.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/pets/tests/create_on_client.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/pets/tests/registry.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/pets/tests/spawn.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/pets/tests/teardown.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/service/npc_ai/detectors/aggro_scan.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/service/npc_ai/detectors/leash_names_tests.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/service/npc_ai/movement_stop/tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/service/npc_ai/transition.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/aoi.rs | 4 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/aoi_churn_smoke.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/aoi_differential_test.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/discord_labels.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/npc_population.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi_names.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi_npc_corpse.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi_npc_display_name.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi_player_intro.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/aoi_view_radius.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/entity_labels.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/entity_lifecycle.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/movement_validation/telemetry_sampling.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/npc_spawn.rs | 5 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/phase.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/space_manager/tests/target_lifetime.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/spawner_tests/live_db_eye_heights.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell-world/src/cell/spawner_tests/spawn_records.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/dispatch/gm_ability_dispatch_tests.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/ability_granted_burst.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/ability_granted_trainer_resend.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/bank_org.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/content_ability_grant.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/disconnect_lab_dummy.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/gm_ability_granted.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/item_used_pose.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/base_messages/tests/respec_burst.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/shutdown_flush.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/shutdown_report.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/aggro_castle.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/assist.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/assist_barracks.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/assist_castle.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/castle_standoff.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/follow_resume.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/leash_walk.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/leg_rows.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/mod.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/npc_vs_npc_budget.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/occluder_los.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/occluder_los_eye_heights.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/pet_kill_credit.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai/tick_row.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_cover_peek.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_cover_seed.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_follow.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_investigate.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_patrol.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_phase7.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/tests/npc_ai_wander.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/auto_cycle_tests.rs | 3 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/crafting_stations_tests.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/npc_respawn/tests/fixtures.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/npc_respawn/tests/respawn_recreate.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/npc_respawn/tests/respawn_witness_loot.rs | 2 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
-| crates/cell/src/cell/service/ticks/pending_holster.rs | 1 | `cfg(test)` module, `#[cfg(test)]` fn or test file |
+| Crate | Files | Call sites | Gate |
+|---|---|---|---|
+| cell | 39 | 47 | inline `#[cfg(test)] mod` or test file |
+| cell-combat | 31 | 66 | inline `#[cfg(test)] mod`, test file, or `test_fixtures` (`cfg(any(test, feature = "test-support"))`, dev-dependency only) |
+| cell-console | 13 | 20 | test file |
+| cell-content | 15 | 27 | inline `#[cfg(test)] mod` or `chain_replay_tests` (`#[cfg(test)] mod`) |
+| cell-duel | 2 | 2 | test file |
+| cell-interactions | 9 | 23 | inline `#[cfg(test)] mod` or test file |
+| cell-methods | 20 | 34 | inline `#[cfg(test)] mod` or test file |
+| cell-pets | 4 | 7 | test file |
+| cell-world | 33 | 52 | inline `#[cfg(test)] mod`, `cfg(test)` `spawner_tests` or `aoi_churn_smoke` |
 
-The one non-test-named file that looks production (`trainer.rs`) is a `#[cfg(test)] pub(crate) mod tests`.
+Files without `test` in the name that call `.spawn_npc(` (for example `trainer.rs`, `vendor.rs`, `dhd.rs`, `being.rs`, `aoi.rs`, `shutdown_flush.rs`) all call it below an inline `#[cfg(test)]` module. `despawn_npc` and `gm_spawn_npc` are different functions and are not counted. None spawns anything in production.
 
 ## 3. Tests that rely on the fallback
 
 Heuristic candidates: a `#[test]` fn whose body mentions `592` or `NPC_DEFAULT_ABILITY`
 and creates an NPC (a `spawn` call or an `npc` name in the body). A test that relies on the
 fallback without naming 592 is not found by this scan. The fix column is a starting point;
-confirm it per test when NC-21 lands. `add_ability(` in the body means the fixture already
-calls `add_ability`, so `add_ability(592)` is the fix; otherwise put `592` in `ability_ids`.
+confirm it per test when NC-21 lands. `add_ability(` of 592 or `NPC_DEFAULT_ABILITY` in the body means the fixture is already explicit.
 
-| Crate | File | Test | Lines | Fix |
-|---|---|---|---|---|
-| cell-catalog | cell-catalog/src/cell/spawner/tests/npc_ability_animation.rs | live_db_every_npc_combat_ability_resolves_one_ability_end_sequence | 81 | `592` in `ability_ids` |
-| cell-catalog | cell-catalog/src/cell/spawner/tests/npc_ability_animation.rs | live_db_a_hostile_template_fires_its_weapons_ranged_auto_attack | 56 | `592` in `ability_ids` |
-| cell-combat | cell-combat/src/cell/abilities/death/tests.rs | dying_player_own_auto_cycle_clears_and_broadcasts | 52 | `592` in `ability_ids` |
-| cell-combat | cell-combat/src/cell/combat/auto_cycle.rs | arm_and_clear_no_op_for_non_player | 11 | `592` in `ability_ids` |
-| cell-combat | cell-combat/src/cell/combat/threat/aggro.rs | npc_default_ability_is_pistol_shot | 4 | `592` in `ability_ids` |
-| cell-combat | cell-combat/src/cell/service/npc_ai/pet/tests/ability.rs | a_pet_with_no_abilities_honours_a_toggled_off_default | 10 | `592` in `ability_ids` |
-| cell-combat | cell-combat/src/cell/spawner_tests/harset/templates.rs | live_db_every_harset_mob_template_carries_a_non_default_ability_set | 60 | `592` in `ability_ids` |
-| cell-console | cell-console/src/cell/console/tests/ab_l2/effects.rs | ab_l2_effects_reads_the_callers_state_without_a_target | 40 | `592` in `ability_ids` |
-| cell-console | cell-console/src/cell/console/tests/ab_l2/mod.rs | ab_l2_non_gm_is_refused_with_feedback_and_nothing_changes | 39 | `592` in `ability_ids` |
-| cell-console | cell-console/src/cell/console/tests/bookmark.rs | playtest_bug_reports_abilities_weapon_and_current_target | 21 | `add_ability(592)` |
-| cell-console | cell-console/src/cell/console/tests/bookmark.rs | playtest_bug_writes_the_ability_snapshot_on_the_bookmark_id | 48 | `592` in `ability_ids` |
-| cell-world | cell-world/src/cell/space_manager/tests/npc_spawn.rs | spawn_npc_gets_default_ability | 9 | `592` in `ability_ids` |
-| cell-world | cell-world/src/cell/space_manager/tests/npc_spawn.rs | spawn_npc_from_record_sets_template_fields | 67 | `592` in `ability_ids` |
-| cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_ability_ids_skips_default_fallback | 22 | `592` in `ability_ids` |
-| cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_falls_back_to_default | 20 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_holds_fire_when_target_outside | 47 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_fires_when_target_inside | 28 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range | 29 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_target_inside_min_range_schedules_backup_waypoint | 47 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range | 33 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_stationary_does_not_back_off_inside_min_range | 31 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_lab_dummy_never_attacks_its_threat_target | 29 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_caster_lab_dummy_gets_no_ai_turn_either | 10 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_only_kill_through_the_tick_pays_nothing | 81 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_killed_by_another_npc_gets_no_turn_that_tick | 69 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/occluder_los.rs | the_drone_sees_over_the_med_station_desk_and_fires_on_the_occluder | 37 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_skips_cooling_ability | 16 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_skips_multiple_cooling_abilities | 22 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_returns_none_when_all_cooling | 13 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_falls_back_to_default_when_no_abilities | 14 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_picks_ammo_bearing_ability_for_npc | 36 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_snaps_to_spawn_restores_health_and_idles | 46 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_with_follow_target_skips_spawn_snap | 54 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | the_stationary_drone_fires_across_the_med_station_desk | 41 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | a_mobile_npc_still_walks_around_the_desk_instead_of_firing | 27 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_melee_npc_never_steps_back | 20 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_dead_zone_during_the_cooldown_holds_fire | 17 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai/training_dummy.rs | a_seeded_training_dummy_never_attacks_its_threat_target | 32 | `592` in `ability_ids` |
-| cell | cell/src/cell/service/tests/npc_ai/zero_health_guard.rs | npc_killed_by_an_effect_bleed_does_not_shoot_back | 108 | `add_ability(592)` |
-| cell | cell/src/cell/service/tests/npc_ai_cover_behaviour.rs | melee_only_npc_never_takes_cover | 17 | `add_ability(592)` |
+| Crate | File | Test | Lines | Kind | Fix |
+|---|---|---|---|---|---|
+| cell-catalog | cell-catalog/src/cell/spawner/tests/npc_ability_animation.rs | live_db_every_npc_combat_ability_resolves_one_ability_end_sequence | 81 | mirrors the fallback in test code | none |
+| cell-catalog | cell-catalog/src/cell/spawner/tests/npc_ability_animation.rs | live_db_a_hostile_template_fires_its_weapons_ranged_auto_attack | 56 | mirrors the fallback in test code | none |
+| cell-combat | cell-combat/src/cell/abilities/death/tests.rs | dying_player_own_auto_cycle_clears_and_broadcasts | 52 | not an NPC-fallback test | none |
+| cell-combat | cell-combat/src/cell/combat/auto_cycle.rs | arm_and_clear_no_op_for_non_player | 11 | not an NPC-fallback test | none |
+| cell-combat | cell-combat/src/cell/combat/threat/aggro.rs | npc_default_ability_is_pistol_shot | 4 | not an NPC-fallback test | none |
+| cell-combat | cell-combat/src/cell/service/npc_ai/pet/tests/ability.rs | a_pet_with_no_abilities_honours_a_toggled_off_default | 10 | asserts the fallback itself | none |
+| cell-combat | cell-combat/src/cell/spawner_tests/harset/templates.rs | live_db_every_harset_mob_template_carries_a_non_default_ability_set | 60 | not an NPC-fallback test | none |
+| cell-console | cell-console/src/cell/console/tests/ab_l2/effects.rs | ab_l2_effects_reads_the_callers_state_without_a_target | 40 | not an NPC-fallback test | none |
+| cell-console | cell-console/src/cell/console/tests/ab_l2/mod.rs | ab_l2_non_gm_is_refused_with_feedback_and_nothing_changes | 39 | not an NPC-fallback test | none |
+| cell-console | cell-console/src/cell/console/tests/bookmark.rs | playtest_bug_reports_abilities_weapon_and_current_target | 21 | unaffected (spawn_npc or direct fixture) | none |
+| cell-console | cell-console/src/cell/console/tests/bookmark.rs | playtest_bug_writes_the_ability_snapshot_on_the_bookmark_id | 48 | not an NPC-fallback test | none |
+| cell-world | cell-world/src/cell/space_manager/tests/npc_spawn.rs | spawn_npc_gets_default_ability | 9 | asserts the fallback itself | none |
+| cell-world | cell-world/src/cell/space_manager/tests/npc_spawn.rs | spawn_npc_from_record_sets_template_fields | 67 | needs fix (record, empty ability_ids) | `592` in `ability_ids` |
+| cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_ability_ids_skips_default_fallback | 22 | not an NPC-fallback test | none |
+| cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_falls_back_to_default | 20 | asserts the fallback itself | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_holds_fire_when_target_outside | 47 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_fires_when_target_inside | 28 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range | 29 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_target_inside_min_range_schedules_backup_waypoint | 47 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range | 33 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_stationary_does_not_back_off_inside_min_range | 31 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_lab_dummy_never_attacks_its_threat_target | 29 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_caster_lab_dummy_gets_no_ai_turn_either | 10 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_only_kill_through_the_tick_pays_nothing | 81 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_killed_by_another_npc_gets_no_turn_that_tick | 69 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/occluder_los.rs | the_drone_sees_over_the_med_station_desk_and_fires_on_the_occluder | 37 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_skips_cooling_ability | 16 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_skips_multiple_cooling_abilities | 22 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_returns_none_when_all_cooling | 13 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_falls_back_to_default_when_no_abilities | 14 | asserts the fallback itself | none |
+| cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_picks_ammo_bearing_ability_for_npc | 36 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_snaps_to_spawn_restores_health_and_idles | 46 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_with_follow_target_skips_spawn_snap | 54 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | the_stationary_drone_fires_across_the_med_station_desk | 41 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | a_mobile_npc_still_walks_around_the_desk_instead_of_firing | 27 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_melee_npc_never_steps_back | 20 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_dead_zone_during_the_cooldown_holds_fire | 17 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/training_dummy.rs | a_seeded_training_dummy_never_attacks_its_threat_target | 32 | needs fix (record, empty ability_ids) | `592` in `ability_ids` |
+| cell | cell/src/cell/service/tests/npc_ai/zero_health_guard.rs | npc_killed_by_an_effect_bleed_does_not_shoot_back | 108 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai_cover_behaviour.rs | melee_only_npc_never_takes_cover | 17 | already explicit | none |
 
 Excluded: 4 NC-01 resolver unit tests in `combat_profile/tests.rs`. They call
 `resolve_npc_combat_profile` directly and spawn no NPC.
 
 ### Groups for NC-21a, b and c
 
-| Group | Tests | Files | Lines (sum of test fn bodies) |
-|---|---|---|---|
-| cell-world | 4 | 2 | 118 |
-| cell-combat | 5 | 5 | 137 |
-| other | 31 | 15 | 1189 |
+Counts cover `needs fix` rows only. `Unaffected` counts the rows NC-21 leaves alone.
+
+| Group | Tests | Files | Lines (sum of test fn bodies) | Unaffected |
+|---|---|---|---|---|
+| cell-world | 1 | 1 | 67 | 0 |
+| cell-combat | 0 | 0 | 0 | 0 |
+| other | 1 | 1 | 32 | 10 |
 
 `ability_select*` files under `crates/cell-combat/src/cell/service/npc_ai/`: flagged for NC-20.
 Hits: `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs` (no fallback test in it;
