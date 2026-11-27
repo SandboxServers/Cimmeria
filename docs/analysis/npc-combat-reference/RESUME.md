@@ -10,11 +10,11 @@ Ledger: README.md. Packets: work-packets.md, work-packets-w1-w2.md, work-packets
 
 ## Wave 3
 
-All six W3 packets integrated; reviews: wave1a, 1b (this file) pending fixes.
+All six W3 packets integrated; wave review pass 1 fixed (wave3-fix-1.md), pass 2 in wave3-review-2.md.
 
 ## Next action
 
-1. Fix the wave review notes (wave3-review-1a.md, wave3-review-1b.md).
+1. Apply the pass-2 wave review notes (wave3-review-2.md), then the pass-3 check if the verdict is not ship.
 2. Green exclusive nextest on nc-w3, open the W3 PR.
 3. W4 (lab NC-40..44, NC-32) after the W3 PR merges; ask D-NC7 before every lab run.
 4. W5 NC-50, NC-51 after W4.

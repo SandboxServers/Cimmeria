@@ -17,7 +17,7 @@ packet runs its own review loop and is merged into the integration branch
 with `merge-noff.ps1`. NC-22, NC-30, NC-31, NC-33 and NC-34 run in parallel
 on disjoint file sets. NC-25 (D-NC8, D-NC11) is cut from the integration
 head only after NC-31 and NC-33 have been merged into it, because it
-corrects lines in the files they create, and it waits for D-NC12. Merge
+corrects lines in the files they create, and D-NC12 is decided (a). Merge
 order into the integration branch: NC-22, NC-31, NC-33, NC-34, NC-25, then
 NC-30 last (only after a green
 `pwsh tools/build-lane/lane.ps1 --exclusive cargo nextest run --workspace <EXCL>`
@@ -162,7 +162,7 @@ its own go-ahead (D-NC7).
 - **Agent:** packet-coder. **Host:** windows. **Depends:** NC-11 merged
   (#2089); NC-31 and NC-33 merged into the W3 integration branch (ops cuts
   `nc-25` from its head after both); D-NC8 and D-NC11 decided 2026-11-27;
-  **D-NC12 decided "(a)"** (README). Do not dispatch before D-NC12. If the
+  **D-NC12 decided "(a)"** (README). NC-25 is integrated. If the
   owner picks (b), (c) or (d), the architect re-specs this packet.
 - **Branch:** `npc-combat-reference/NC-25-559-tooltip-effect`. **Worktree:** `nc-25`.
 - **Commit:** `fix(content): ability 559 uses its own tooltip effect 5310 (NC-25)`
