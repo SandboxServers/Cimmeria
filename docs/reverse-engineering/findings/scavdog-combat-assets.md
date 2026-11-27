@@ -10,7 +10,7 @@
 
 The ScavDog is a small asset set. `MOB_ScavDog.upk` holds one skeletal mesh, one AnimSet with eight sequences, one AnimTree, one BodySet, one PhysicsAsset and four local Kismet hooks. It has **one** attack animation, `sAttack1` (1.133 s). No sequence carries an AnimNotify, the package imports no AnimNotify or sound class, and `BodySounds` is empty. Nothing in the cooked client names the `mob_scav.fev` events, so which code plays them is still unknown. The package's Kismet hooks cover death and the five hit reactions only; none covers an attack.
 
-The cooked ability catalogue has no event-set field. The `1433 Mob Strike → event set 300` link exists only in the seed (set 300 was added by PR #822 as a RECONSTRUCTION, not legacy data), and the seed gives 983 Bite the same set 300. Neither link can be confirmed or refuted from client files. Nothing in the client ties 983 Bite, or 1433, to the ScavDog. The ScavDog's own stance data sets `MeleeDistance` to 0, and both abilities have `MinRange="0" MaxRange="0"`, so no client asset states an attack reach.
+The cooked ability catalogue has no event-set field. The `1433 Mob Strike → event set 300` link exists only in the seed (PR #822 added the link, NULL to 300, as a Tier-3 RECONSTRUCTION, not legacy data; the event set itself is older), and the seed gives 983 Bite the same set 300. Neither link can be confirmed or refuted from client files. Nothing in the client ties 983 Bite, or 1433, to the ScavDog. The ScavDog's own stance data sets `MeleeDistance` to 0, and both abilities have `MinRange="0" MaxRange="0"`, so no client asset states an attack reach.
 
 ## Evidence classes
 
@@ -145,7 +145,7 @@ The seeds give both abilities `event_set_id = 300` (`db/resources/Abilities/Seed
 ## 8. Corrections to existing docs
 
 - [audio-voice-inventory.md](../../client/audio-voice-inventory.md) §7: the `mob_scav` row says notifies trigger its events at High confidence. For the ScavDog that is contradicted: there is no notify, and the "5 attack" count is 5 variants of one `attack` event.
-- [npc-combat-reference README](../../analysis/npc-combat-reference/README.md) F6: "983 Bite (effect 1092, no event set and no script)" disagrees with the seed, which sets `event_set_id = 300` for 983 as for 1433. The cooked client has no event-set field for either.
+- [npc-combat-reference README](../../analysis/npc-combat-reference/README.md) F6: "983 Bite (effect 1092, no event set and no script)" disagrees with the seed, which sets `event_set_id = 300` for 983 as for 1433. The cooked client has no event-set field for either. README F6 is right that the original data had no link; the seed's 300 on 983 was added by PR #822 (NULL before).
 
 Neither file is in NC-05's edit set; the corrections are left to their owners.
 
