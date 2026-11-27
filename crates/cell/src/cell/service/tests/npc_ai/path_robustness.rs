@@ -288,6 +288,10 @@ async fn a_degenerate_repath_clears_the_stale_route() {
     let target = Vector3::new(at.x - 1.0, at.y + 2.5, at.z);
     let mut mgr = fixture(at, None, target);
     super::seed_default_ability(&mut mgr, 0, 2);
+    mgr.get_entity_mut(NPC)
+        .unwrap()
+        .abilities
+        .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
     crate::cell::service::npc_ai::replace_nav_path_on(
         mgr.get_entity_mut(NPC).unwrap(),
         [on_mesh(HALLWAY01)],

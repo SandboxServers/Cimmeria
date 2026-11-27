@@ -336,6 +336,8 @@ async fn a_degenerate_repath_hold_faces_the_target() {
     seed_default_ability(&mut mgr, 0, 2);
     {
         let npc = mgr.get_entity_mut(NPC).unwrap();
+        npc.abilities
+            .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
         npc.threat_list.insert(LEADER, 10.0);
         npc.direction = Vector3::new(0.0, FRAC_PI_2, 0.0);
     }

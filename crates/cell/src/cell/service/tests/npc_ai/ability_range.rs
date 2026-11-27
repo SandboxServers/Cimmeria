@@ -20,6 +20,21 @@ use super::{make_ai_fixture, seed_default_ability, seed_target_with_threat};
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
+/// Stage a launch the AI attempts and `handle_use_ability` refuses for a
+/// real reason. The NPC knows 592 explicitly (D-NC1: no placeholder), and
+/// 592 is a melee swing with a 1 m `max_range`. The AI reaches a melee
+/// swing out to `NPC_MELEE_RANGE` (3 m) whatever the def says, so a target
+/// 2.5 m off is "in range" for the tick, while the launch gate holds the
+/// swing to the def's own 1 m and refuses it as too far.
+fn stage_melee_reach_mismatch(mgr: &mut crate::cell::space_manager::SpaceManager) {
+    seed_default_ability(mgr, /* min */ 0, /* max */ 1);
+    if let Some(def) = mgr
+        .ability_defs
+        .get_mut(&crate::cell::combat::NPC_DEFAULT_ABILITY)
+    {
+        def.is_ranged = false;
+    }
+}
 // ──────────────────────────────────────────────────────────────────────
 // Negative-logging regression guard: handle_use_ability returning false.
 //
@@ -36,13 +51,12 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
     use tracing::Level;
 
     // Stage: NPC in Fighting with a live in-range player on the threat
-    // list. The NPC has NO ability_defs loaded at all, so
-    // `handle_use_ability` will reject the call ("ability missing")
-    // and return false — exactly the rejection shape the WARN guards.
-    // The player stands 4 u off, outside the 2 u comfort range a ranged NPC
-    // steps back from (NA32), so the NPC fires rather than stepping.
+    // list. The NPC's one ability is a 1 m melee swing the AI still
+    // reaches at 2.5 u (NPC_MELEE_RANGE), so `handle_use_ability` refuses
+    // it as out of range and returns false — exactly the rejection shape the WARN guards.
+    // The melee NPC never steps back (NA32 is for ranged NPCs).
     let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
-    mgr.create_entity(100, "Castle", [14.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(100, "Castle", [12.5, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;
@@ -55,15 +69,17 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.threat_list.insert(100, 1.0);
         // Stage the rejection shape that triggers the WARN:
-        // - `npc.abilities` is empty (no `add_ability` call).
-        // - `choose_npc_ability` documents an empty-bucket fallback to
-        //   NPC_DEFAULT_ABILITY ("so a misconfigured template doesn't
-        //   wedge silently") — so the selector returns Some.
-        // - `handle_use_ability` then rejects on the
-        //   `entity.abilities.has_ability(ability_id)` check (the
-        //   entity doesn't know the fallback ability) and returns
-        //   false. That false-return is the seam the new WARN guards.
+        // - `npc.abilities` knows NPC_DEFAULT_ABILITY (592), given
+        //   explicitly: D-NC1 has no placeholder fallback, so an empty
+        //   bucket would idle instead of attempting a fire.
+        // - `choose_npc_ability` returns Some(592).
+        // - `handle_use_ability` then rejects the 1 m swing as out of
+        //   range (see `stage_melee_reach_mismatch`) and returns false. That false-return
+        //   is the seam the new WARN guards.
+        npc.abilities
+            .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
     }
+    stage_melee_reach_mismatch(&mut mgr);
 
     let capture = LogCapture::install();
     let (tx, _rx) = mpsc::channel(8);
@@ -286,12 +302,11 @@ async fn npc_ai_fight_target_inside_min_range_schedules_backup_waypoint() {
 #[tokio::test]
 async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
     // Same setup as `npc_ai_fight_warns_when_handle_use_ability_returns_false`:
-    // empty known_abilities + missing ability_defs → choose_npc_ability
-    // returns NPC_DEFAULT_ABILITY via the empty-bucket fallback, then
-    // handle_use_ability rejects on the has_ability check and returns
-    // false. 4 u off: outside the ranged step-back's comfort range (NA32).
+    // known_abilities = [NPC_DEFAULT_ABILITY] (explicit, D-NC1 has no
+    // placeholder) + a 1 m melee def the AI reaches at 2.5 u → handle_use_ability
+    // rejects it as out of range and returns false.
     let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
-    mgr.create_entity(100, "Castle", [14.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(100, "Castle", [12.5, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;
@@ -303,9 +318,12 @@ async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
     }
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.threat_list.insert(100, 1.0);
+        npc.abilities
+            .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
         // `ai_retry_at` starts None; the fight pass must populate it.
         assert!(npc.ai_retry_at.is_none());
     }
+    stage_melee_reach_mismatch(&mut mgr);
 
     let before = std::time::Instant::now();
     let (tx, _rx) = mpsc::channel(16);

@@ -36,9 +36,9 @@ pub struct SpawnRecord {
     pub is_stationary: bool,
     /// Ability IDs the NPC starts with, loaded from the template's
     /// `ability_set_id` via `ability_set_abilities`. Empty when the
-    /// template has no ability set — the spawn path falls back to
-    /// `NPC_DEFAULT_ABILITY` so we never spawn a defenseless mob by
-    /// accident (the Castle_CellBlock guards rely on this fallback).
+    /// template has no ability set. The spawn path then grants 592 only to
+    /// a `WP-Human.*` template (D-NC1, NC-30), and any other NPC knows no
+    /// ability and holds fire.
     pub ability_ids: Vec<i32>,
     /// Resolved respawn delay in seconds.
     /// `COALESCE(spawnlist.respawn_secs, entity_templates.respawn_secs)`:

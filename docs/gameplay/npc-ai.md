@@ -291,10 +291,9 @@ that the policy allows.
 
 592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
 (`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
-firearm. Production runs `PLACEHOLDER_POLICY = Legacy`, so behaviour is
-unchanged. Decision D-NC1 is pending: if it is taken, NC-30 flips the policy,
-so only a human with a `WP-Human.*` component keeps 592 and an NPC with no
-ability set idles.
+firearm. Production runs `PLACEHOLDER_POLICY = RequireWeaponEvidence` (NC-30,
+decision D-NC1), so only a human with a `WP-Human.*` component keeps 592, and
+an NPC with no ability set and no weapon evidence idles and warns.
 
 Two diagnostics log on target `npc.combat_profile`, at most once per template
 id per process:
@@ -305,9 +304,10 @@ id per process:
 - `combat_profile_unresolved` (WARN): the template has no ability set and no
   weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
 
-An explicit set logs nothing. In the AI, an NPC that knows no ability falls
-back to `placeholder_ability(policy)`: 592 under `Legacy`, none under
-`RequireWeaponEvidence`.
+An explicit set logs nothing. In the AI, an NPC that knows no ability gets
+no fallback: `placeholder_ability(policy)` returns 592 under `Legacy` and
+`None` under `RequireWeaponEvidence`, so the NPC idles (D-NC1). The 592 for a
+`WP-Human.*` template comes from spawn resolution, not from the AI.
 
 ### Classification
 

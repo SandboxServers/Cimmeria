@@ -7,9 +7,9 @@
 //! It is a human firearm, so it is wrong for creatures. The resolver makes
 //! that choice in one place and reports it.
 //!
-//! This module is pure: it has no callers yet, so production behaviour is
-//! unchanged. [`PLACEHOLDER_POLICY`] stays `Legacy` until decision D-NC1
-//! (NC-30) flips it to `RequireWeaponEvidence`.
+//! This module is pure. [`PLACEHOLDER_POLICY`] is `RequireWeaponEvidence`
+//! (decision D-NC1, NC-30): a template with no ability set gets 592 only
+//! when it carries a `WP-Human.*` weapon component.
 
 use super::aggression::NPC_DEFAULT_ABILITY; // 592 Pistol Shot
 
@@ -25,8 +25,9 @@ pub enum PlaceholderPolicy {
     RequireWeaponEvidence,
 }
 
-/// The policy production runs. `Legacy` until D-NC1 / NC-30.
-pub const PLACEHOLDER_POLICY: PlaceholderPolicy = PlaceholderPolicy::Legacy;
+/// The policy production runs. D-NC1 (decided 2026-11-27) flipped it from
+/// `Legacy` to `RequireWeaponEvidence` under NC-30.
+pub const PLACEHOLDER_POLICY: PlaceholderPolicy = PlaceholderPolicy::RequireWeaponEvidence;
 
 /// A component whose package starts with this is a weapon mesh.
 pub const WEAPON_COMPONENT_PREFIX: &str = "WP-";
