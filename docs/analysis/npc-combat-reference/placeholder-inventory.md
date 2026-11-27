@@ -12,7 +12,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
   `RequireWeaponEvidence`; the other 470 would hold fire.
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
-- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 42 candidates (6 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 6 are unaffected and 34 need no fix.
+- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 42 candidates (6 cell-world, 5 cell-combat, 31 other). Of these, 3 need an NC-21 fix (2 cell-world, 1 other), 6 are unaffected and 33 need no fix.
 
 ## Method
 
@@ -639,7 +639,7 @@ Counts cover `needs fix` rows only. `Unaffected` counts the rows NC-21 leaves al
 
 | Group | Tests | Files | Lines (sum of test fn bodies) | Unaffected |
 |---|---|---|---|---|
-| cell-world | 1 | 1 | 67 | 0 |
+| cell-world | 2 | 2 | 89 | 0 |
 | cell-combat | 0 | 0 | 0 | 0 |
 | other | 1 | 1 | 32 | 6 |
 
