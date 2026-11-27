@@ -160,6 +160,14 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (459, 3987, 'Mor
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (460, 3988, 'Fortitude', '10');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (461, 3989, 'Perception', '10');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (462, 3990, 'Intellect', '10');
+-- RECONSTRUCTED (NC-12): effect 736 desc '-100F -10H' -> HealthDamage 10, FocusDamage 100; script per #493 (effect 656)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (470, 736, 'HealthDamage', '10');
+-- RECONSTRUCTED (NC-12): effect 736 desc '-100F -10H' -> HealthDamage 10, FocusDamage 100; script per #493 (effect 656)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (471, 736, 'FocusDamage', '100');
+-- RECONSTRUCTED (NC-12): effect 1717 desc '-125F -15H' -> HealthDamage 15, FocusDamage 125; script per #493 (effect 656)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (472, 1717, 'HealthDamage', '15');
+-- RECONSTRUCTED (NC-12): effect 1717 desc '-125F -15H' -> HealthDamage 15, FocusDamage 125; script per #493 (effect 656)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (473, 1717, 'FocusDamage', '125');
 -- Deployables Phase 0 (ids 380-389): 5066 "Damage", the pulse of 1012
 -- Deployable: Microwave Emitter. Its description is "Medium Radius AE /
 -- Secondary -100F": 100 Focus and no Health, written the way the "-100F
