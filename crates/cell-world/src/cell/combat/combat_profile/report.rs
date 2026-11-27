@@ -30,6 +30,7 @@ pub fn report_profile(
                     body_set,
                     weapon_component,
                     ability_id = NPC_DEFAULT_ABILITY,
+                    ability_name = "Pistol Shot",
                     "NPC template has no ability set; using the Pistol Shot placeholder"
                 );
             }
