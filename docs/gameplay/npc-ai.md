@@ -301,7 +301,7 @@ id per process:
 
 - `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
   Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
-  (or `none`), `ability_id`.
+  (or `none`), `ability_id`, `ability_name`.
 - `combat_profile_unresolved` (WARN): the template has no ability set and no
   weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
 
