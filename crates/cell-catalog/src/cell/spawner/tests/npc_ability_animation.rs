@@ -7,8 +7,9 @@
 //! Break any link and `handle_use_ability` still deals the damage, with no
 //! animation on any client. 1851 of the 1886 seeded abilities have no event
 //! set, so the check is scoped to what NPCs actually fire: the effective
-//! abilities (the template's set, or `NPC_DEFAULT_ABILITY` when it has none)
-//! of every template that is spawned hostile or carries an ability set.
+//! abilities (the template's set, or `NPC_DEFAULT_ABILITY` when it has none and
+//! carries a `WP-Human.*` component (D-NC1)) of every template that is spawned
+//! hostile or carries an ability set.
 //!
 //! The third test is the §14 weapon check: a hostile template that names a
 //! `weapon_item_id` must fire that weapon's ranged auto attack
@@ -21,14 +22,33 @@ use cimmeria_entity::abilities::ability_is_unimplemented;
 
 use crate::cell::spawner::{
     load_ability_defs, load_effect_defs, load_event_set_sequences, load_spawn_templates,
-    EVENT_ABILITY_END,
+    SpawnRecord, EVENT_ABILITY_END,
 };
 use crate::test_support::require_db_or_skip;
 
-/// The ability an NPC with no ability set fires. Mirrors
+/// The Pistol Shot placeholder (592). Mirrors
 /// `cimmeria_cell_world::cell::combat::aggression::NPC_DEFAULT_ABILITY`,
 /// which this crate cannot depend on (cell-world depends on cell-catalog).
 const NPC_DEFAULT_ABILITY: i32 = 592;
+
+/// The abilities a template fires at spawn. The template's own set wins; an
+/// empty set gets the placeholder only with a `WP-Human.*` component, as the
+/// spawn rule in cell-world's `combat_profile` gives it (D-NC1).
+fn effective_abilities(proto: &SpawnRecord) -> Vec<i32> {
+    if !proto.ability_ids.is_empty() {
+        return proto.ability_ids.clone();
+    }
+    if proto
+        .components
+        .iter()
+        .flatten()
+        .any(|c| c.starts_with("WP-Human."))
+    {
+        vec![NPC_DEFAULT_ABILITY]
+    } else {
+        Vec::new()
+    }
+}
 
 /// Abilities allowed to reach an NPC without a resolvable Ability_End. Each
 /// entry needs a reason, argued in review.
@@ -114,12 +134,7 @@ async fn live_db_every_npc_combat_ability_resolves_one_ability_end_sequence() {
         let proto = templates
             .get(template_id)
             .unwrap_or_else(|| panic!("template {template_id} ({name}) must load"));
-        let effective = if proto.ability_ids.is_empty() {
-            vec![NPC_DEFAULT_ABILITY]
-        } else {
-            proto.ability_ids.clone()
-        };
-        for ability_id in effective {
+        for ability_id in effective_abilities(proto) {
             fired_by.entry(ability_id).or_default().push(*template_id);
         }
     }
@@ -202,7 +217,7 @@ async fn live_db_automatic_weapon_auto_attack_resolves_the_burst_ability_end() {
 
 /// §14 weapon/ability mismatch. A hostile spawned template that names a
 /// `weapon_item_id` carries that item's ranged auto attack in its effective
-/// ability set. Without it the NPC fires the Pistol Shot fallback (592) and
+/// ability set. Without it the NPC fires the pistol placeholder (592) and
 /// plays the pistol animation holding, say, an SMG.
 ///
 /// Fails on the pre-NA43 seed: 148, 169 and 170 hold item 21 (SMG, ranged
@@ -245,12 +260,7 @@ async fn live_db_a_hostile_template_fires_its_weapons_ranged_auto_attack() {
             // to match.
             continue;
         }
-        let proto = &templates[template_id];
-        let effective = if proto.ability_ids.is_empty() {
-            vec![NPC_DEFAULT_ABILITY]
-        } else {
-            proto.ability_ids.clone()
-        };
+        let effective = effective_abilities(&templates[template_id]);
         if !ranged.iter().any(|a| effective.contains(a)) {
             failures.push(format!(
                 "template {template_id} ({name}) holds item {item_id} (ranged {ranged:?}) \

@@ -13,11 +13,12 @@ changes no seed, no code and no test. Assignment waits for the W4 UAT
   set** (`ability_set_id` NULL) and **no `WP-*` component**. The
   [placeholder inventory](placeholder-inventory.md) gives them the verdict
   `holds fire` (rows 71-75, 105-110, 132-137 and the lineup rows).
-- Under `Legacy` (today) they fall back to 592 Pistol Shot through
-  `NPC_DEFAULT_ABILITY`. The hostile AMBRat (template 74) fires a pistol
-  today, as the [hub-pass UAT README](../hub-pass-uat/README.md) records.
-- Under `RequireWeaponEvidence` (D-NC1, NC-30) they would idle and log a
-  warning. Each one needs an ability set before that flip, or it stays idle.
+- Before NC-30 they fell back to 592 Pistol Shot through
+  `NPC_DEFAULT_ABILITY`. The hostile AMBRat (template 74) fired a pistol,
+  as the [hub-pass UAT README](../hub-pass-uat/README.md) records.
+- Under `RequireWeaponEvidence` (D-NC1, NC-30, now in force) they idle and
+  log `combat_profile_unresolved`, so the hub-pass AMBRat no longer attacks.
+  Each one needs an ability set to fight again.
 - ScavDog (template 76) is the only creature with a set (set 6, `Mob
   Strike`, RECONSTRUCTED under D-NC5). It is the pattern for the organic
   roster.

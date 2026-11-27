@@ -58,7 +58,7 @@ columns are Guard (160) and Lieutenant (159).
 |---|---|---|---|---|---|
 | Template id | 160 `Praxis Jaffa Guard`, name_id 8917 | 159 `Praxis Jaffa Lieuternant` (sic), name_id 8918 | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/entity_templates.sql:317`, `:327` | NC-02 |
 | Body set | `BS_JaffaMale.BS_JaffaMale` | `BS_JaffaMale.BS_JaffaMale` | EARLIEST LEGACY DATA | `entity_templates.sql:317`, `:327` | NC-02 |
-| Weapon item and component ids | `weapon_item_id` NULL; no `WP-Jaffa` component (the components are `AR_J_Praxis.*` and `BS_JaffaMale.*`). Staff to be added in place by NC-22 (D-NC3, decided yes; the staff is RECONSTRUCTED, not recovered original data) | `weapon_item_id` NULL; no `WP-Jaffa` component; the torso/tail variant is `AR_JM_PT1_PT100PT101PC100PS100`. Staff to be added by NC-22 | EARLIEST LEGACY DATA | `entity_templates.sql:317`, `:327` | NC-22 (D-NC3) |
+| Weapon item and component ids | `weapon_item_id` NULL; `WP-Jaffa.WP_Staff_Plasma_4A` added in place by NC-22 (D-NC3; RECONSTRUCTED, not recovered original data); before NC-22 the components were `AR_J_Praxis.*` and `BS_JaffaMale.*` only | `weapon_item_id` NULL; the torso/tail variant is `AR_JM_PT1_PT100PT101PC100PS100`; `WP-Jaffa` staff added by NC-22 | EARLIEST LEGACY DATA (row); RECONSTRUCTED (staff) | `entity_templates.sql:317`, `:327` | NC-22 (D-NC3) |
 | Ability set | 4 `Jaffa staff ability set`: abilities 584 and 710 | same | EARLIEST LEGACY DATA | `ability_sets.sql:39`; `ability_set_abilities.sql:40`, `:49` | NC-02 |
 | Ability 584 | `Staff Auto Attack`, ranged, event set 3, effects `{646}`, monikers `{1383013887}` | same | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:1452` | NC-02 |
 | Effect 646 | `Staff Auto Attack Damage`, script `RangedPhysicalDamage`, event set 262, desc `-250F -25H`; NVPs HealthDamage 25, FocusDamage 250 (`effect_nvps.sql:25`, `:27`, nvp ids 10 and 11) | same | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:1243` | NC-02 |
@@ -81,7 +81,7 @@ columns are Guard (160) and Lieutenant (159).
 | Body set | `MOB_ScavDog.BS_MOB_ScavDog` | EARLIEST LEGACY DATA | `entity_templates.sql:154` | NC-02 |
 | Weapon item and component ids | `weapon_item_id` NULL; components `MOB_ScavDog.MOB_ScavDog_00`. No weapon component, so no firearm evidence | EARLIEST LEGACY DATA | `entity_templates.sql:154` | NC-05 |
 | Ability set | `ability_set_id` 6 `ScavDog: Mob Strike` (1433 only), set by NC-13 in place of the old NULL. The set is RECONSTRUCTED (D-NC5, decided yes) | RECONSTRUCTED | `entity_templates.sql:154`; `db/resources/Abilities/Seed/ability_sets.sql:43-44`; `ability_set_abilities.sql:127` | NC-13 (D-NC5) |
-| Empty-set fallback | No longer reached by ScavDog. An empty set still adds 592 Pistol Shot (a humanoid firearm) through `NPC_DEFAULT_ABILITY` for other templates while `PLACEHOLDER_POLICY` is `Legacy` (D-NC1; NC-30 flips it) | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-world/src/cell/combat/combat_profile/mod.rs:85-106`, `:116-121`; `crates/cell-world/src/cell/space_manager/spawn.rs:314-334`; `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-69` | NC-13 (D-NC5) |
+| Empty-set fallback | No longer reached by ScavDog. An empty set adds 592 Pistol Shot (a humanoid firearm) only when the template has a `WP-Human.*` component; otherwise the NPC idles and logs `combat_profile_unresolved`. `PLACEHOLDER_POLICY` is `RequireWeaponEvidence` since NC-30 (D-NC1) | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-world/src/cell/combat/combat_profile/mod.rs:30`, `:80-113`; `crates/cell-world/src/cell/space_manager/spawn.rs:314-334`; `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-69` | NC-13 (D-NC5) |
 | Ability 1433 | `Mob Strike`, melee, event set 300 (PR #822 Tier 3, see the link row), effects `{1717}`, monikers `{1470900795}`. Set membership in set 6 is RECONSTRUCTED | EARLIEST LEGACY DATA (row); RECONSTRUCTED (set 6) | `db/resources/Abilities/Seed/abilities.sql:2047` | NC-13 |
 | Effect 1717 | `Strike Damage`, event set 301, script `MeleePhysicalDamage`, desc `-125F -15H`; NVPs HealthDamage 15 and FocusDamage 125 (nvp 472, 473), added by NC-12 (D-NC2, closed) | RECONSTRUCTED (script and NVPs, NC-12); name, desc and event set EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:3012-3013`; `effect_nvps.sql:167-170` | NC-12 |
 | Unassigned ability 983 | `Bite`, melee, event set 300 (PR #822 Tier 3, see the link row), effects `{1092}`, monikers `{1470900795}`. Still in no set (D-NC5: stays unassigned until NC-05 finds evidence; it found none) | EARLIEST LEGACY DATA | `abilities.sql:5036` | NC-05 |
@@ -130,9 +130,9 @@ closed in Wave 2 stay listed, struck through, so the trail is kept.
 - **O3 (D-NC6, decided 2026-11-27: informational).** NID `weapon_item_id` 21 is
   the item `SGHC 6 SMG` (`items.sql:4733`). It has no server consumer, so the
   `WP-*` component is the weapon evidence. Recorded; no change. Packet: NC-06 (closed).
-- **O4 (D-NC3, decided 2026-11-27: yes, in place, RECONSTRUCTED).** The real Jaffa 159 and 160
-  have no `WP-Jaffa` staff component. The seed row is NC-22's to add. Clones
-  1380 and 1381 carry it in the Debug Area. Open until NC-22 merges. Packet: NC-22.
+- **O4 (closed by NC-22, D-NC3).** The real Jaffa 159 and 160 now carry the
+  `WP-Jaffa` staff component, RECONSTRUCTED (decided 2026-11-27: yes, in place).
+  Clones 1380 and 1381 carry it in the Debug Area. Packet: NC-22 (closed).
 - **O5 (D-NC5).** ScavDog set 6 holds 1433 Mob Strike (RECONSTRUCTED, NC-13).
   Ability 983 Bite is unassigned, and effect 1092 has no event set and no
   script, so the Bite chain ends. Open for 983. Packets: NC-13 (1433 done), NC-05 (983: no evidence found).

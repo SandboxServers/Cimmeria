@@ -3,7 +3,7 @@
 Packet: NC-15. Campaign: `docs/analysis/npc-combat-reference/`. Read with
 [work-packets-w1-w2.md](work-packets-w1-w2.md) § NC-15 and the resolver contract
 C1 in [work-packets.md](work-packets.md). This note is inventory only: no code
-changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
+changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of NC-15: NC-30 has since flipped the policy to `RequireWeaponEvidence` (D-NC1).
 
 ## Summary
 
@@ -603,7 +603,7 @@ confirm it per test when NC-21 lands. `add_ability(` of 592 or `NPC_DEFAULT_ABIL
 | cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_ability_ids_skips_default_fallback | 22 | not an NPC-fallback test | none |
 | cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_falls_back_to_default | 20 | asserts the fallback itself | none |
 | cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_knows_exactly_592 | 11 | asserts the fallback itself (added by NC-10) | none |
-| cell-world | cell-world/src/cell/combat/combat_profile/report.rs | placeholder_profile_logs_once_per_template_through_spawn | 22 | needs fix: expects the Legacy placeholder row (added by NC-10) | none until D-NC1 flips the policy; then assert the unresolved WARN instead |
+| cell-world | cell-world/src/cell/combat/combat_profile/report.rs | placeholder_profile_logs_once_per_template_through_spawn | 22 | needs fix: expects the Legacy placeholder row (added by NC-10) (fixed by NC-30) | none until D-NC1 flips the policy; then assert the unresolved WARN instead |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_holds_fire_when_target_outside | 47 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_fires_when_target_inside | 28 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range | 29 | already explicit | none |

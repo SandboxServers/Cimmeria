@@ -2061,7 +2061,7 @@ at = "fired"
 id = "NC-U2"
 title = "Praxis Jaffa Guard reference: the staff is visible and the guard fires a ranged bolt at 15 m"
 expected = "The Praxis Jaffa Guard (DebugArea_Ref_JaffaGuard, spawn 14303) holds its serpent staff in hand, raises it and fires the staff's ranged bolt (ability 584) at you from 15 m, with a bolt projectile and its sound."
-notes = "NC-03 and NC-12. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md (Block 2). Template 1380 copies 1371 with faction 10; the staff in hand is the look today (NC-22 may add it to 159 and 160 only, not here). The Jaffa has no Pistol Shot, so the bolt is its own ability."
+notes = "NC-03 and NC-12. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md (Block 2). Template 1380 copies 1371 with faction 10; the staff in hand is the look today (NC-22 added it to 159 and 160 only, not here). The Jaffa has no Pistol Shot, so the bolt is its own ability."
 setup = [
   { chat = ".aggro on", tier = "G" },
   { chat = ".gotolocation DebugArea 55 5.8 -890", tier = "G" },

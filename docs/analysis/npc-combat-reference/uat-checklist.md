@@ -54,7 +54,7 @@ a difference from 10 Health is a new finding, not a presentation fault.
 The guard and lieutenant share the set: 584 (Staff Auto Attack, the ranged bolt) and 710
 (Staff Melee AA, the staff swing), faction 10, a 20 s respawn. Templates 1380 and 1381
 copy 1371 and are byte-identical to it. The staff in hand is the existing look;
-NC-22 adds the staff to 159 and 160 only (D-NC3), not to these pens. The
+NC-22 added the staff to 159 and 160 only (D-NC3), not to these pens. The
 melee damage rides effect 736 (NC-12, hand NVP rows 470 and 471).
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
@@ -92,7 +92,7 @@ these checks.
 
 | Row | Check | Expected | Pass / fail |
 |---|---|---|---|
-| T1 | No `combat_profile_placeholder` for templates 24, 4, 76, 1380 or 1381 | Zero rows | [ ] pass [ ] fail |
+| T1 | No `combat_profile_placeholder` or `combat_profile_unresolved` for templates 24, 4, 76, 1380 or 1381 | Zero rows | [ ] pass [ ] fail |
 | T2 | No `effect_inert` for effects 736 or 1717 | Zero rows (NC-12 closed both) | [ ] pass [ ] fail |
 | T3 | Every `combat_profile_*` line carries its template name next to the id (R8) | The name and the id appear together | [ ] pass [ ] fail |
 
