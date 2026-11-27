@@ -31,7 +31,7 @@ Rows follow the C6 layout: `Field | Value | Class | Source | Packet`.
 | Template id | 24 `NID Guard`, name_id 7417, class `mob` | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/entity_templates.sql:370` | NC-02 |
 | Body set | `BS_HumanMale.BS_HumanMale` | EARLIEST LEGACY DATA | `entity_templates.sql:370` | NC-02 |
 | Weapon item and component ids | `weapon_item_id` 21; components `AR_H_SGC.AR_HM_SB1_SH100`, `AR_H_SGC.AR_HM_SH1_SH100`, `AR_H_SGC.AR_HM_SL1_SL101SB100SH100`, `AR_H_SGC.AR_HM_ST1_ST103`, `BS_HumanMale.BS_HM_Hands_00`, `BS_HumanMale.BS_HM_Head_01`, `WP-Human.WP_SMG_1A` | EARLIEST LEGACY DATA | `entity_templates.sql:370` | NC-06 |
-| Weapon item 21 name | Not found as a `VALUES (21, ...)` row under `db/resources`; the SMG moniker is `ITEM_SMG` 728213066 | UNRESOLVED | `db/resources/Entities/Seed/monikers.sql:11`; D-NC6 (README F4) | NC-06 |
+| Weapon item 21 | `SGHC 6 SMG` ("High Capacity SMG"), visual_component `WP-Human.WP_SMG_1A`, moniker_ids `{3175425141,728213066,3901383057}`, clip_size 30; it matches the template's `WP-Human.WP_SMG_1A` component | EARLIEST LEGACY DATA | `db/resources/Items/Seed/items.sql:4733`; D-NC6 (README F4) | NC-06 |
 | Ability set | 3 `NID guard (SMG) ability set`; only ability 559 | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/ability_sets.sql:11`; `ability_set_abilities.sql:11` | NC-02 |
 | Ability 559 | `Automatic Weapon Auto Attack`, type `ABILITY_TYPE_DD`, ranged, cooldown 1.5, min/max range 0, required_ammo 3, event set 15, effects `{621}`, monikers `{3175425141}` | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:5252` | NC-02 |
 | Moniker 3175425141 | `ITEM_Automatic_Weapon` | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/monikers.sql:51` | NC-02 |
@@ -58,8 +58,8 @@ columns are Guard (160) and Lieutenant (159).
 | Body set | `BS_JaffaMale.BS_JaffaMale` | `BS_JaffaMale.BS_JaffaMale` | EARLIEST LEGACY DATA | `entity_templates.sql:316`, `:326` | NC-02 |
 | Weapon item and component ids | `weapon_item_id` NULL; no `WP-Jaffa` component (the components are `AR_J_Praxis.*` and `BS_JaffaMale.*`) | `weapon_item_id` NULL; no `WP-Jaffa` component; the torso/tail variant is `AR_JM_PT1_PT100PT101PC100PS100` | EARLIEST LEGACY DATA | `entity_templates.sql:316`, `:326` | NC-22 (D-NC3) |
 | Ability set | 4 `Jaffa staff ability set`: abilities 584 and 710 | same | EARLIEST LEGACY DATA | `ability_sets.sql:39`; `ability_set_abilities.sql:40`, `:49` | NC-02 |
-| Ability 584 | `Staff Auto Attack`, ranged, event set 3, effects `{646}`, monikers `{1383013887}` | same | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql` (`VALUES (584`) | NC-02 |
-| Effect 646 | `Staff Auto Attack Damage`, script `RangedPhysicalDamage`, event set 262, desc `-250F -25H` | same | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql` (`VALUES (646`) | NC-02 |
+| Ability 584 | `Staff Auto Attack`, ranged, event set 3, effects `{646}`, monikers `{1383013887}` | same | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:1452` | NC-02 |
+| Effect 646 | `Staff Auto Attack Damage`, script `RangedPhysicalDamage`, event set 262, desc `-250F -25H`; NVPs HealthDamage 25, FocusDamage 250 (`effect_nvps.sql:25`, `:27`, nvp ids 10 and 11) | same | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:1243` | NC-02 |
 | Ability 710 | `Staff Melee AA`, melee, event set 300, effects `{736}`, monikers `{1383013887}` | same | EARLIEST LEGACY DATA | `abilities.sql:5119` | NC-02 |
 | Effect 736 | `Strike Damage`, event set 301, script NULL; no NVP rows | same | EARLIEST LEGACY DATA | `effects.sql:7522`; `effect_nvps.sql` (no `736` row) | NC-12 |
 | Moniker 1383013887 | `ITEM_Staff` | same | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/monikers.sql:15` | NC-02 |
@@ -68,7 +68,7 @@ columns are Guard (160) and Lieutenant (159).
 | Faction and level | faction 1, level 50 | faction 1, level 50 | EARLIEST LEGACY DATA | `entity_templates.sql:316`, `:326` | NC-02 |
 | Sequence ids | Not looked up in NC-02 | Not looked up in NC-02 | UNRESOLVED | `event_sets_sequences.sql` | NC-04 |
 | Animation package, audio, client build | Not checked | Not checked | UNRESOLVED | (client) | NC-06 |
-| Server path | Ability choice uses set 4 (`known_count()` is non-zero, so no 592 fallback); 584 is lowest-id and wins over 710 | same | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-67` | NC-12 |
+| Server path | Ability choice uses set 4 (`known_count()` is non-zero, so no 592 fallback); ids are sorted ascending and the first off-cooldown one is chosen, so 584 wins over 710 even in melee reach and 710 fires only while 584 is on cooldown | same | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-76` | NC-12 |
 | Runtime test result | Not run | Not run | UNRESOLVED | (Debug Area, Z12) | NC-31 |
 
 ## ScavDog (template 76)
@@ -78,7 +78,8 @@ columns are Guard (160) and Lieutenant (159).
 | Template id | 76 `ScavDog`, class `mob`, name_id NULL | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/entity_templates.sql:153` | NC-02 |
 | Body set | `MOB_ScavDog.BS_MOB_ScavDog` | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-02 |
 | Weapon item and component ids | `weapon_item_id` NULL; components `MOB_ScavDog.MOB_ScavDog_00` | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-05 |
-| Ability set | `ability_set_id` NULL: no set, so the template falls back to 592 Pistol Shot (a humanoid firearm) | EARLIEST LEGACY DATA; CURRENT CIMMERIA IMPLEMENTATION | `entity_templates.sql:153`; `crates/cell-world/src/cell/space_manager/spawn.rs:315-320`; `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-67` | NC-13 (D-NC5) |
+| Ability set | `ability_set_id` NULL: no set | EARLIEST LEGACY DATA | `entity_templates.sql:153` | NC-13 (D-NC5) |
+| Empty-set fallback | An empty set adds 592 Pistol Shot (a humanoid firearm) through `NPC_DEFAULT_ABILITY` | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-world/src/cell/space_manager/spawn.rs:314-320`; `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-67` | NC-13 (D-NC5) |
 | Unassigned ability 1433 | `Mob Strike`, melee, event set 300, effects `{1717}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:2047` | NC-13 |
 | Effect 1717 | `Strike Damage`, event set 301, script NULL, desc `-125F -15H`, no NVP rows | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:3012`; `effect_nvps.sql` (no `1717` row) | NC-13 |
 | Unassigned ability 983 | `Bite`, melee, event set 300, effects `{1092}`, monikers `{1470900795}` | EARLIEST LEGACY DATA | `abilities.sql:5036` | NC-05 |
@@ -114,12 +115,10 @@ columns are Guard (160) and Lieutenant (159).
 - **O1 (D-NC8).** Ability 559's description reads `-100F/-10H`
   (`abilities.sql:5252`), but effect 621 executes `-200F -20H`
   (`effects.sql:7815`, NVPs 20H/200F). No change; the effect row executes.
-  Record only. Packet: NC-11.
+  Record only. The same tooltip says "1 Ammo" while `required_ammo` is 3 (`abilities.sql:5252`); no ammo gate exists for NPCs (O9). Packet: NC-11.
 - **O2.** Moniker 1470900795 (used by abilities 1433, 983 and 592) is not in
   `db/resources/Entities/Seed/monikers.sql`. Its name is unknown. Packet: NC-13.
-- **O3 (D-NC6).** NID `weapon_item_id` 21 has no item row under
-  `db/resources`, so the item name is unverified. The NID has no server
-  consumer for it (README F4). Packet: NC-06.
+- **O3 (D-NC6).** NID `weapon_item_id` 21 is the item `SGHC 6 SMG` (`items.sql:4733`). It has no server consumer (README F4), so the `WP-*` component is the weapon evidence. Packet: NC-06.
 - **O4 (D-NC3).** The real Jaffa 159 and 160 have no `WP-Jaffa` staff
   component. Clones 1380 and 1381 carry it in the Debug Area. Packet: NC-22.
 - **O5 (D-NC5).** ScavDog has no set. Ability 1433 has no set and effect 1717
