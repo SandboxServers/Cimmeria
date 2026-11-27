@@ -1995,3 +1995,237 @@ question = "Walking the first walkway (z -897): do the humans stand on the floor
 name = "walkway"
 tool = "lab_screenshot"
 at = "seen"
+# ================================================================ Z12 combat reference range (NC-33)
+
+[[row]]
+id = "NC-U1"
+title = "NID Guard reference: SMG bursts at range, cover, death, loot and a 20 s respawn"
+expected = "The NID Guard (DebugArea_Ref_NID, spawn 14300) acquires you at 5 m, fires SMG bursts from its muzzle with the SMG sound, takes cover when hit, drops loot from table 2 when it dies and respawns about 20 s later."
+notes = "NC-03 and NC-11. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md#nid. The 559 tooltip says -10 Health per burst (D-NC8, RECONSTRUCTED); effect 621 executes 20 Health and 200 Force today, so a 20 Health drop is the recorded O1 mismatch, not a presentation fault. The Z12 pens have no aggression override, so the NID acquires a player who stands inside its aggro radius."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 95 5.8 -860", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { name = "NID Guard" }, label = "target" },
+  { wait_ms = 1000 },
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 4000 },
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press2" },
+  { wait_ms = 8000, label = "fired" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the fight"
+source = "tool"
+at = "fired"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "acquired"
+text = "SigNoz: the NID Guard acquired you (tag DebugArea_Ref_NID)"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Ref_NID' AND target_name = '${character}'"
+min_rows = 1
+required = false
+[[row.expect]]
+id = "smg"
+text = "the NID Guard fired SMG bursts (set 3, ability 559, event set 15)"
+source = "human"
+question = "Did the NID Guard fire short SMG bursts at you from its muzzle, with the SMG sound and a tracer or flash on each burst, and did it step behind cover when you hit it?"
+[[row.expect]]
+id = "death"
+text = "it died, dropped loot and respawned about 20 s later"
+source = "human"
+question = "Did the NID Guard fall when killed, leave loot (table 2) you could pick up, and stand up again about 20 seconds later?"
+[[row.expect]]
+id = "respawn"
+text = "SigNoz: the NID Guard respawned with a 20 s timer"
+source = "signoz"
+filter = "scope_name = 'spawner.npc_respawn' AND template_id = 24 AND respawn_secs = 20"
+min_rows = 1
+required = false
+[[row.evidence]]
+name = "range"
+tool = "lab_screenshot"
+at = "fired"
+
+[[row]]
+id = "NC-U2"
+title = "Praxis Jaffa Guard reference: the staff is visible and the guard fires a ranged bolt at 15 m"
+expected = "The Praxis Jaffa Guard (DebugArea_Ref_JaffaGuard, spawn 14303) holds its serpent staff in hand, raises it and fires the staff's ranged bolt (ability 710) at you from 15 m, with a bolt projectile and its sound."
+notes = "NC-03 and NC-12. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md#jaffa. Template 1380 copies 1371 with faction 10; the staff in hand is the look today (NC-22 may add it to 159 and 160 only, not here). The Jaffa has no Pistol Shot, so the bolt is its own ability."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 55 5.8 -890", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@target", args = { name = "Praxis Jaffa Guard" }, label = "target" },
+  { wait_ms = 1000 },
+  { wait_ms = 8000, label = "fired" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the wait"
+source = "tool"
+at = "fired"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "bolt-sent"
+text = "SigNoz: the Jaffa Guard used its ranged ability 710 at you"
+source = "signoz"
+filter = "tag = 'DebugArea_Ref_JaffaGuard' AND body CONTAINS '710'"
+min_rows = 1
+required = false
+[[row.expect]]
+id = "staff"
+text = "the staff is visible in the guard's hand and the bolt flies from it"
+source = "human"
+question = "Is the serpent staff visible in the Jaffa Guard's hand (not floating, not missing), and did a ranged bolt leave the staff toward you at about 15 m, with its sound?"
+[[row.evidence]]
+name = "bolt"
+tool = "lab_screenshot"
+at = "fired"
+
+[[row]]
+id = "NC-U3"
+title = "Praxis Jaffa Guard reference: a staff swing at 2 m damages you, and it switches back when you step out"
+expected = "At 2 m the Jaffa Guard swings its staff (staff strike, ability 584), your Health drops, the swing shows the staff arc and its sound; when you step back out to 8 m it stops swinging and returns to its ranged bolt."
+notes = "NC-03, NC-12 and NC-20 (melee preference). Checklist: docs/analysis/npc-combat-reference/uat-checklist.md#jaffa. The swing only fires after NC-20 is merged; before that the row records the bolt-only behaviour as a fail. Effects 736 and 1717 carry the melee damage (NC-12)."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 42 5.8 -890", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@target", args = { name = "Praxis Jaffa Guard" }, label = "target" },
+  { wait_ms = 6000, label = "swing" },
+  { tool = "@move_to", args = { point = { x = 56, y = 5.8, z = -890 }, arrival_m = 1, timeout_ms = 20000 }, label = "out" },
+  { wait_ms = 6000, label = "switched" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the walk"
+source = "tool"
+at = "switched"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "swing-damage"
+text = "SigNoz: the staff swing (ability 584) damaged you at 2 m"
+source = "signoz"
+filter = "tag = 'DebugArea_Ref_JaffaGuard' AND body CONTAINS '584'"
+min_rows = 1
+required = false
+[[row.expect]]
+id = "swing-look"
+text = "the swing shows the staff arc and sound, and your Health drops"
+source = "human"
+question = "At 2 m, did the Praxis Jaffa Guard swing its staff at you with the arc and sound, and did your Health drop? After you walked back to about 8 m, did it stop swinging and go back to its bolt?"
+[[row.evidence]]
+name = "swing"
+tool = "lab_screenshot"
+at = "swing"
+
+[[row]]
+id = "NC-U4"
+title = "ScavDog reference: no gun presentation ever, a bite only in reach, creature sound, hit reaction and death"
+expected = "The ScavDog (DebugArea_Ref_ScavDog, spawn 14302) never shows a gun or a shot. At 5 m it stays put or closes in; in reach it bites (Mob Strike, set 6, ability 1433) with a creature attack sound, and it reacts to a hit and dies."
+notes = "NC-03 and NC-13. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md#scavdog. Set 6 is RECONSTRUCTED (NC-13): the bite is the reconstructed Mob Strike, so the client sound and animation are the row's evidence, not an original capture."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 95 5.8 -900", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@target", args = { name = "ScavDog" }, label = "target" },
+  { wait_ms = 5000, label = "at5m" },
+  { tool = "@move_to", args = { point = { x = 91.5, y = 5.8, z = -900 }, arrival_m = 1, timeout_ms = 20000 }, label = "reach" },
+  { wait_ms = 6000, label = "bitten" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the walk"
+source = "tool"
+at = "bitten"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "bite-signoz"
+text = "SigNoz: the ScavDog used ability 1433 only once you were in reach"
+source = "signoz"
+filter = "tag = 'DebugArea_Ref_ScavDog' AND body CONTAINS '1433'"
+min_rows = 1
+required = false
+[[row.expect]]
+id = "no-gun"
+text = "no gun, muzzle flash or shot was ever shown"
+source = "human"
+question = "Did the ScavDog show no gun, muzzle flash or projectile at any point, bite you only when you walked into reach, make a creature attack sound, react to your hit and fall when killed?"
+[[row.evidence]]
+name = "bite"
+tool = "lab_screenshot"
+at = "bitten"
+
+[[row]]
+id = "NC-U5"
+title = "Prisoner Retrieval Unit reference: an energy beam from its emitter, damage, and drone movement"
+expected = "The Prisoner Retrieval Unit (DebugArea_Ref_PRU, spawn 14301) fires its energy shock from the emitter on its body at you from about 5 m, your Health drops, and its drone moves to the firing position."
+notes = "NC-03 and NC-14. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md#pru. The PRU's integrated weapon is the drone ability 221 (energy shock, NC-14 test pins the damage). Stand 4-6 m off."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 65 5.8 -850", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@target", args = { name = "Prisoner retrieval unit" }, label = "target" },
+  { wait_ms = 8000, label = "fired" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the wait"
+source = "tool"
+at = "fired"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "shock-signoz"
+text = "SigNoz: the PRU used its ability 221 at you (tag DebugArea_Ref_PRU)"
+source = "signoz"
+filter = "tag = 'DebugArea_Ref_PRU' AND body CONTAINS '221'"
+min_rows = 1
+required = false
+[[row.expect]]
+id = "beam"
+text = "the energy beam or projectile leaves the emitter, and the drone moves"
+source = "human"
+question = "Did an energy beam or projectile leave the Prisoner Retrieval Unit's emitter toward you, with its sound, and did its drone move to a firing position?"
+[[row.evidence]]
+name = "beam"
+tool = "lab_screenshot"
+at = "fired"
