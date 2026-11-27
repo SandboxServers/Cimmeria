@@ -82,7 +82,7 @@ NVPs `HealthDamage` 25 and `FocusDamage` 250 (`effect_nvps.sql:25, 27`).
 ### Ability 559 Automatic Weapon Auto Attack (SMG and AR ranged; NID set)
 
 Ability row `abilities.sql:5252`: `ABILITY_TYPE_DD`, cooldown 1.5, ranged,
-moniker `ITEM_Automatic_Weapon`, `event_set_id` 15, effects `{621}`,
+moniker `ITEM_Automatic_Weapon`, `event_set_id` 15, effects `{5310}` (was `{621}` until NC-25),
 `required_ammo` 3.
 
 | Set | Role | Sequence | Event | Kismet | NVP | Line |
@@ -94,11 +94,12 @@ moniker `ITEM_Automatic_Weapon`, `event_set_id` 15, effects `{621}`,
 | 15 | | 15 | 1001 (Ability_End) | `KIS-SA_Burst_Source` | - | sequences.sql:785 |
 | 15 | | 2963 | 1003 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2989, sequences_nvp.sql:3655 |
 
-Effect 621 `effects.sql:7815`: name `AW Auto Attack Damage`, desc `Single Target -200F -20H`, script
+Effect 5310 `effects.sql:7824`: name `AW Auto Attack Damage`, desc `Single Target -100F -10H`, script
 `RangedPhysicalDamage`, `event_set_id` 289 (`Generic burst weapon target`).
-NVPs `HealthDamage` 20 and `FocusDamage` 200 (`effect_nvps.sql:37, 39`).
-The tooltip says -100F/-10H; the effect row executes (D-NC8, recorded in
-NC-31's unresolved list).
+NVPs `HealthDamage` 10 and `FocusDamage` 100 (`effect_nvps.sql:1667, 1668`),
+RECONSTRUCTED from the 559 tooltip (D-NC8, D-NC11, NC-25). Giza effect 621
+(`effects.sql:7817`, -200F/-20H, NVPs 20/200 at `effect_nvps.sql:37, 39`) is kept
+unchanged and no ability uses it.
 
 | Set | Role | Sequence | Event | Kismet | NVP | Line |
 |---|---|---|---|---|---|---|
@@ -219,7 +220,7 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
    the family cannot be read from the seed. Set 300 is a judgement (RECONSTRUCTED, D-NC5).
 6. **Ability and effect sets differ by design.** 1433 is on 300 and its
    effect 1717 on 301. 983 is on 300 but its effect 1092 has no set (Gap 1).
-   A source/target pair is not a mismatch. The same holds for 559/621 (15/289), 584/646 (3/262),
+   A source/target pair is not a mismatch. The same holds for 559/5310 (15/289), 584/646 (3/262),
    710/736 (300/301) and 221/264 (802/803).
 7. **Not presentation: 559 `required_ammo` 3.** NPCs have no ammo gate
    (F4 in README). Recorded for NC-11; no effect on the sets above.

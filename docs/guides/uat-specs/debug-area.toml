@@ -2001,7 +2001,7 @@ at = "seen"
 id = "NC-U1"
 title = "NID Guard reference: SMG bursts at range, cover, death, loot and a 20 s respawn"
 expected = "The NID Guard (DebugArea_Ref_NID, spawn 14300) acquires you at 5 m, fires SMG bursts from its muzzle with the SMG sound, takes cover when hit, drops loot from table 2 when it dies and respawns about 20 s later."
-notes = "NC-03 and NC-11. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md (Block 1). The 559 tooltip says -10 Health per burst (D-NC8, RECONSTRUCTED); effect 621 executes 20 Health and 200 Force today, so a 20 Health drop is the recorded O1 mismatch, not a presentation fault. The Z12 pens have no aggression override, so the NID acquires a player who stands inside its aggro radius."
+notes = "NC-03 and NC-11. Checklist: docs/analysis/npc-combat-reference/uat-checklist.md (Block 1). The 559 tooltip says -10 Health per burst (D-NC8, RECONSTRUCTED); ability 559 executes its own effect 5310 (10 Health and 100 Focus, RECONSTRUCTED from that tooltip, D-NC11); effect 621 is unchanged and no ability uses it, so a 10 Health drop is the expected value, not a presentation fault. The Z12 pens have no aggression override, so the NID acquires a player who stands inside its aggro radius."
 setup = [
   { chat = ".aggro on", tier = "G" },
   { chat = ".gotolocation DebugArea 95 5.8 -860", tier = "G" },

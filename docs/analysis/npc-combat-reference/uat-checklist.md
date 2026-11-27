@@ -34,17 +34,18 @@ pass/fail cell is blank until a lab session (NC-40 to NC-44, D-NC7) fills it.
 
 Expected server evidence for the NID, from the NC-11 reference tests: the
 SMG ability is effect set 15 (ability 559, `Generic burst weapon use`) with
-effect 621 (`RangedPhysicalDamage`) and `WP-Human.WP_SMG_1A`. Loot is table 2,
+effect 5310 (`RangedPhysicalDamage`, reconstructed from the tooltip) and `WP-Human.WP_SMG_1A`. Loot is table 2,
 respawn 20 s. The 559 tooltip gives -10 Health and -100 Force per burst
-(D-NC8, RECONSTRUCTED). Effect 621 executes 20 Health and 200 Force today, so
-the damage cell records the observed number and the mismatch is the
-UNRESOLVED item O1 in the registry. A mismatch is not a presentation fault.
+(D-NC8, RECONSTRUCTED). Ability 559 now executes its own effect 5310, reconstructed
+from that tooltip (10 Health, 100 Focus). Effect 621 is unchanged at 20 Health and
+200 Force and no ability uses it. The damage cell records the observed number; O1 in
+the registry tracks any difference from 10 Health. A mismatch is not a presentation fault.
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
 | N1 (NC-U1) | Stand 5 m off it at 95 5.8 -860 and draw its fire with your Pistol Shot | It acquires you and fires short SMG bursts from the muzzle, with a flash or tracer and the SMG sound | `npc_ai.aggro` acquired with tag `DebugArea_Ref_NID`; the ability 559 use | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 | N2 (NC-U1) | Hit it so it takes cover | It steps behind the cover node and keeps firing from there | `use_cover` in the npc log; the cover node chosen | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N3 | Read your Health after one burst | The health bar drops by the burst's damage | The damage number in the combat log: 10 H per the 559 tooltip (D-NC8, the expected value); effect 621 executes 20 H today, so record the observed value as O1 | [ ] pass [ ] fail | RECONSTRUCTED (D-NC8) |
+| N3 | Read your Health after one burst | The health bar drops by the burst's damage | The damage number in the combat log: 10 H, from effect 5310 (the 559 tooltip, D-NC8, the expected value); effect 621 is unchanged and no longer used by 559, so record the observed value; a difference is O1 | [ ] pass [ ] fail | RECONSTRUCTED (D-NC8) |
 | N4 (NC-U1) | Kill it | It falls, leaves loot from table 2 you can pick up | Loot roll for table 2 in the server log; no loot from the wrong table | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 | N5 (NC-U1) | Wait about 20 s after the kill | It stands again at spawn 14300 | `spawner.npc_respawn` with `respawn_secs` 20 for template 24 | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 
@@ -104,5 +105,6 @@ these checks.
 - D-NC7 (lab approved in principle): this checklist is written, not run. The
   lab sessions are NC-40 to NC-44 and each needs a fresh go-ahead.
 - D-NC8 (follow the 559 tooltip, RECONSTRUCTED): N3 expects the tooltip's
-  10 Health per burst and records the observed value. The effect row is not
-  changed here; the mismatch stays UNRESOLVED (O1).
+  10 Health per burst, which effect 5310 executes (NC-25, RECONSTRUCTED), and
+  records the observed value. Effect 621 is kept unchanged and no ability uses it;
+  O1 is closed by NC-25.

@@ -261,11 +261,15 @@ pub(super) async fn pass(
 
 /// Z9's promise: the four operatives (template 1376, the seeded 559 SMG) kill
 /// a fresh character, with a new Commando's 760 Health and 1,570 Focus
-/// (`archetypes.sql`), within seven AI ticks (14 s; it takes five when
-/// measured). Fails if the squad is thinned to two, its ability set changed to
-/// a weaker one, or its damage stops.
+/// (`archetypes.sql`), within `WINDOW` AI ticks (2 s each; it takes 9 when
+/// measured, after NC-25). `WINDOW` is ceil(9 * 7 / 5) = 13, the old 5-to-7
+/// headroom re-measured after 559 halved to 100 Focus / 10 Health (D-NC12).
+/// It stays below 2 * 9, so a squad thinned to two still fails. Fails if the
+/// squad is thinned to two, its ability set changed to a weaker one, or its
+/// damage stops.
 #[tokio::test]
 async fn live_db_debug_area_lethal_squad_kills_a_fresh_character_quickly() {
+    const WINDOW: u32 = 13;
     let pool = require_db_or_skip!();
     let templates = load_spawn_templates(&pool).await.expect("templates");
     let squad = da04_rows(&pool).await;
@@ -292,7 +296,7 @@ async fn live_db_debug_area_lethal_squad_kills_a_fresh_character_quickly() {
     let _ = mgr.compute_aoi_changes();
     let (tx, mut rx) = mpsc::channel(65_536);
     let mut died_after = None;
-    for n in 1..=7 {
+    for n in 1..=WINDOW {
         pass(&mut mgr, &ids, &tx, &mut rx).await;
         let p = mgr.get_entity(PLAYER).unwrap();
         if crate::cell::combat::is_dead_state(p.state_field)
@@ -305,7 +309,7 @@ async fn live_db_debug_area_lethal_squad_kills_a_fresh_character_quickly() {
     let p = mgr.get_entity(PLAYER).unwrap();
     assert!(
         died_after.is_some(),
-        "a fresh character must die to the squad within 7 AI ticks; left with {} Health, {} Focus",
+        "a fresh character must die to the squad within {WINDOW} AI ticks; left with {} Health, {} Focus",
         p.stats.get(HEALTH).unwrap().cur,
         p.stats.get(FOCUS).unwrap().cur
     );

@@ -33,10 +33,12 @@ Rows follow the C6 layout: `Field | Value | Class | Source | Packet`.
 | Weapon item and component ids | `weapon_item_id` 21; components `AR_H_SGC.AR_HM_SB1_SH100`, `AR_H_SGC.AR_HM_SH1_SH100`, `AR_H_SGC.AR_HM_SL1_SL101SB100SH100`, `AR_H_SGC.AR_HM_ST1_ST103`, `BS_HumanMale.BS_HM_Hands_00`, `BS_HumanMale.BS_HM_Head_01`, `WP-Human.WP_SMG_1A` | EARLIEST LEGACY DATA | `entity_templates.sql:371`; the `WP-Human.WP_SMG_1A` component is checked by `nid_reference_carries_smg_evidence` (NC-11) | NC-06 |
 | Weapon item 21 | `SGHC 6 SMG` ("High Capacity SMG"), visual_component `WP-Human.WP_SMG_1A`, moniker_ids `{3175425141,728213066,3901383057}`, clip_size 30; it matches the template's `WP-Human.WP_SMG_1A` component. `weapon_item_id` is informational (D-NC6, decided 2026-11-27) | EARLIEST LEGACY DATA | `db/resources/Items/Seed/items.sql:4733`; README F4 | NC-06 |
 | Ability set | 3 `NID guard (SMG) ability set`; only ability 559 | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/ability_sets.sql:11`; `ability_set_abilities.sql:11` | NC-02 |
-| Ability 559 | `Automatic Weapon Auto Attack`, type `ABILITY_TYPE_DD`, ranged, cooldown 1.5, min/max range 0, required_ammo 3, event set 15, effects `{621}`, monikers `{3175425141}`. The tooltip reads `-100F/-10H` (O1) | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:5252` | NC-02 |
+| Ability 559 | `Automatic Weapon Auto Attack`, type `ABILITY_TYPE_DD`, ranged, cooldown 1.5, min/max range 0, required_ammo 3, event set 15, effects `{5310}` (was `{621}` until NC-25), monikers `{3175425141}`. The tooltip reads `-100F/-10H` (O1) | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:5252` | NC-02 |
 | Moniker 3175425141 | `ITEM_Automatic_Weapon` | EARLIEST LEGACY DATA | `db/resources/Entities/Seed/monikers.sql:51` | NC-02 |
-| Effect 621 | `AW Auto Attack Damage`, ability 559, script `RangedPhysicalDamage`, event set 289, desc `-200F -20H`. To be rewritten to 10H/100F as RECONSTRUCTED (D-NC8, O1). | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:7817` | NC-02 |
-| Effect 621 NVPs | HealthDamage 20 (H), FocusDamage 200 (F), so the effect executes 20H/200F | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effect_nvps.sql:37`, `:39` | NC-02 |
+| Effect 621 | `AW Auto Attack Damage`, ability 559, script `RangedPhysicalDamage`, event set 289, desc `-200F -20H`. Kept unchanged; no ability uses it since NC-25 (D-NC11). | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:7817` | NC-02 |
+| Effect 621 NVPs | HealthDamage 20 (H), FocusDamage 200 (F), so the effect would execute 20H/200F. Kept unchanged; no ability uses it since NC-25 (D-NC11) | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effect_nvps.sql:37`, `:39` | NC-02 |
+| Effect 5310 | `AW Auto Attack Damage`, ability 559, script `RangedPhysicalDamage`, event set 289, desc `Single Target -100F -10H` (the 559 tooltip). Executed by ability 559 since NC-25 | RECONSTRUCTED | `db/resources/Effects/Seed/effects.sql:7824` | NC-25 |
+| Effect 5310 NVPs | HealthDamage 10 (H), FocusDamage 100 (F), so the effect executes 10H/100F | RECONSTRUCTED | `db/resources/Effects/Seed/effect_nvps.sql:1667`, `:1668` | NC-25 |
 | Event sets | Template event set 570 `Players default event set`; ability event set 15 `Generic burst weapon use (channelable)`; effect event set 289 `Generic burst weapon target` | EARLIEST LEGACY DATA | `entity_templates.sql:371`; `db/resources/Events/Seed/event_sets.sql:1323`, `:763`, `:427` | NC-04 |
 | Sequence ids | Traced to the event sets by NC-04 (`presentation-chain.md`, NID section). The KeyName each KIS slot node is fed, and the 1105 burst-source anomaly in set 289, are UNRESOLVED | UNRESOLVED | `presentation-chain.md`; [reference-npc-presentation.md](../../reverse-engineering/findings/reference-npc-presentation.md) § NID guard SMG, § Answers to NC-04 § Gaps | NC-04, NC-06 |
 | Loot | `loot_table_id` 2 `Cellblock NID guard default` | EARLIEST LEGACY DATA | `db/resources/Loot/Seed/loot_tables.sql:9` | NC-02 |
@@ -118,11 +120,11 @@ The open list is the brief's deliverable 7: the original behaviour the campaign
 has not settled. Each item names the packet or decision that owns it. Items
 closed in Wave 2 stay listed, struck through, so the trail is kept.
 
-- **O1 (D-NC8, decided 2026-11-27: follow the 559 tooltip).** Ability 559's description
-  reads `-100F/-10H` (`abilities.sql:5252`), but effect 621 still executes `-200F -20H`
-  (`effects.sql:7817`, NVPs 20H/200F at `effect_nvps.sql:37`, `:39`). The owner chose the tooltip: a follow-up packet rewrites effect 621 to 10H/100F, and that rewrite is RECONSTRUCTED.
-  Until it merges, the seed rows in this registry are the current data. The same tooltip says "1 Ammo" while
-  `required_ammo` is 3; no ammo gate exists for NPCs (O9). Packet: NC-11 (recorded); follow-up packet (to be numbered).
+- **O1 (D-NC8, decided 2026-11-27: follow the 559 tooltip). Closed by NC-25:** ability 559
+  now executes effect 5310, the tooltip's 10H/100F, RECONSTRUCTED (D-NC8, D-NC11). Giza
+  effect 621 (`-200F -20H`, NVPs 20/200) is kept unchanged and no ability uses it. The same
+  tooltip says "1 Ammo" while `required_ammo` is 3; no ammo gate exists for NPCs (O9).
+  Packet: NC-11 (recorded); NC-25 (closed).
 - **O2.** Moniker 1470900795 (used by abilities 1433, 983 and 592) is not in
   `db/resources/Entities/Seed/monikers.sql`. Its name is unknown. Packet: NC-13 (open).
 - **O3 (D-NC6, decided 2026-11-27: informational).** NID `weapon_item_id` 21 is

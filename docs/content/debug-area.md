@@ -462,13 +462,14 @@ Test' (438, 10.4, -916). Respawner **130** 'Debug Area Arrival'
 | 13641 | 1377 | `DebugArea_Respawn_Slow` | Cellblock Guard | (430, 10.03, -922) | Respawns 30 s after death |
 
 **The lethal squad.** Four level-31 NID Operatives (1,750 HP each) with the
-SMG set (559, 200 Focus / 20 Health a shot, every AI tick). They stand 28 to
+SMG set (559, 100 Focus / 10 Health a shot since NC-25, every AI tick; effect
+5310, RECONSTRUCTED from the tooltip, D-NC11). They stand 28 to
 31 m east of respawner 131, over a rise that blocks the line of sight from it.
 Their `aggro_radius` is 10, so you have to walk up to them. The closest one
 acquires you and the other three join through same-room assist. A fresh
-character (a Commando starts with 760 Health and 1,570 Focus) dies in five AI
-ticks, about 10 s, measured with the seeded abilities; the live-DB smoke
-allows seven. They respawn 60 s after
+character (a Commando starts with 760 Health and 1,570 Focus) dies in 9 AI
+ticks, about 18 s, measured with the seeded abilities; the live-DB smoke
+allows 13. They respawn 60 s after
 death and carry loot table 2.
 
 **The respawn-timer targets.** Two level-1 guards (250 HP) seeded NEUTRAL
