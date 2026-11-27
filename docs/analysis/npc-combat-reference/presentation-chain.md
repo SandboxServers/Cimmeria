@@ -38,9 +38,8 @@ Two patterns repeat in this data:
 
 | Link | Class | Source |
 |---|---|---|
-| Ability to set, by weapon family (584→3, 559→15, 710→300) | STRONGLY INFERRED (animation-links label CLIENT-INFERRED; Tier 1 for 584 and 710, Tier 2 for 559) | animation-links.md:35-37 (family rule), :64 (SMG and AR items fire 559) |
-| Ability to set, by judgement (1433→300, 983→300) | RECONSTRUCTED (animation-links Tier 3, label RECONSTRUCTION) | animation-links.md:74 |
-| Ability to set, seed only (221→802) | EARLIEST LEGACY DATA | seed row only; the doc lists 802 only as a low-confidence beam candidate (animation-links.md:88) |
+| Ability to set, Giza seed (584→3, 559→15, 710→300, 221→802) | EARLIEST LEGACY DATA (present before PR #822, which did not touch these rows; 584, 559 and 710 match the family rule, animation-links.md:35-37) | `abilities.sql`; commit `f153138b5` changes none of them |
+| Ability to set, by judgement (1433→300, 983→300) | RECONSTRUCTED (PR #822 Tier 3; both NULL before) | animation-links.md:74 |
 | Effect to set (all six) | EARLIEST LEGACY DATA | seed only; the doc covers ability links and grenade blast sets (:73) |
 | Kismet package names (`KIS-SA_*`, `KIS-abilities_human`) | ORIGINAL CLIENT VERIFIED (existence, cited second-hand from animation-links.md:23; this packet read no client file) | animation-links.md, "The client has no ability-keyed lookup" (CLIENT-PROVEN) |
 | Sequence-to-set pairing and NVPs | EARLIEST LEGACY DATA | seed rows (`event_sets_sequences`, `sequences`, `sequences_nvp`) |
@@ -230,4 +229,4 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
 NC-06 checks the gaps in the client: the staff sockets and the
 `KIS-SA_Melee_Target` rows for 301, the PRU beam for 802 and 803, and the
 source sequences in target sets (gap 3). NC-05 checks gap 4 for ScavDog and
-the 1433 link (RECONSTRUCTED until then).
+the 1433 and 983 links (RECONSTRUCTED, PR #822 Tier 3, unless a client record names the ability).
