@@ -14,9 +14,11 @@
 ## How the chain works
 
 An ability plays its presentation through `abilities.event_set_id`. The set
-needs an `Ability_End` sequence (event 1001) to animate at all. The effect
-then plays its hit through `effects.event_set_id`, which holds target
-sequences (events 2002-2006). Each sequence names a Kismet script
+needs an `Ability_End` sequence (event 1001) to animate at all. An effect
+names a target set through `effects.event_set_id`; its sequences are events
+2002-2006. The server reads only the ability's set (`use_ability/sequence.rs`
+sends events 1000, 1001 and 1002), and nothing reads `effects.event_set_id`,
+so whether the client plays the target set is UNRESOLVED (NC-06). Each sequence names a Kismet script
 (`sequences.kismet_script_name`), and some sequences carry NVPs
 (`sequences_nvp`). The client resolves the set by id and never reads the
 ability (animation-links.md, "The client has no ability-keyed lookup").
@@ -34,17 +36,20 @@ Two patterns repeat in this data:
 
 | Link | Class | Source |
 |---|---|---|
-| Ability to set, by weapon family (584→3, 559→15, 710→300) | CLIENT-INFERRED | animation-links.md:35-37 (family rule), :64 (SMG and AR items fire 559) |
-| Ability to set, by judgement (1433→300, 983→300) | RECONSTRUCTED (the doc's tier 3, RECONSTRUCTION) | animation-links.md:74 |
+| Ability to set, by weapon family (584→3, 559→15, 710→300) | STRONGLY INFERRED (animation-links label CLIENT-INFERRED; Tier 1 for 584 and 710, Tier 2 for 559) | animation-links.md:35-37 (family rule), :64 (SMG and AR items fire 559) |
+| Ability to set, by judgement (1433→300, 983→300) | RECONSTRUCTED (animation-links Tier 3, label RECONSTRUCTION) | animation-links.md:74 |
 | Ability to set, seed only (221→802) | EARLIEST LEGACY DATA | seed row only; the doc lists 802 only as a low-confidence beam candidate (animation-links.md:88) |
 | Effect to set (all six) | EARLIEST LEGACY DATA | seed only; the doc covers ability links and grenade blast sets (:73) |
-| Kismet package names (`KIS-SA_*`, `KIS-abilities_human`) | ORIGINAL CLIENT VERIFIED (existence) | animation-links.md, "The client has no ability-keyed lookup" (CLIENT-PROVEN) |
+| Kismet package names (`KIS-SA_*`, `KIS-abilities_human`) | ORIGINAL CLIENT VERIFIED (existence, cited second-hand from animation-links.md:23; this packet read no client file) | animation-links.md, "The client has no ability-keyed lookup" (CLIENT-PROVEN) |
 | Sequence-to-set pairing and NVPs | EARLIEST LEGACY DATA | seed rows (`event_sets_sequences`, `sequences`, `sequences_nvp`) |
+| Effect-set playback (does the client play 2002-2006?) | UNRESOLVED | no seed, server or RE source; NC-06 |
 
 ## Ability and effect chains
 
-Sequences in each table are in the order of `event_sets_sequences`. "Line"
-gives the seed file line for the row.
+Sequences in each table are in event-id order (the file order differs). The
+Kismet column drops the `KIS-abilities_human.` prefix; the real
+`kismet_script_name` is that prefix plus the shown name, as in the first row
+of set 3. "Line" gives the seed file line for the row.
 
 ### Ability 584 Staff Auto Attack (Jaffa ranged staff; set 4)
 
@@ -53,14 +58,14 @@ Ability row `abilities.sql:1452`: `ABILITY_TYPE_DD`, cooldown 3, ranged,
 
 | Set | Role | Sequence | Event | Kismet | NVP | Line |
 |---|---|---|---|---|---|---|
-| 3 | ability source (`Generic single-shot weapon use`) | 2182 | 1000 | `KIS-abilities_human.KIS-SA_Sing_Source` | - | sequences.sql:1687 |
+| 3 | ability source (`Generic single-shot weapon use`) | 2182 | 1000 | `KIS-SA_Sing_Source` | - | sequences.sql:1687 |
 | 3 | | 2617 | 1004 | `KIS-SA_Sing_Source` | - | sequences.sql:2305 |
 | 3 | | 2619 | 1006 | `KIS-SA_Sing_Source` | - | sequences.sql:2309 |
 | 3 | | 2618 | 1007 | `KIS-SA_Sing_Source` | - | sequences.sql:2307 |
 | 3 | | 3 | 1001 (Ability_End) | `KIS-SA_Sing_Source` | - | sequences.sql:3063 |
 | 3 | | 2969 | 1002 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:3001, sequences_nvp.sql:3665 |
 
-Effect 646 `effects.sql:1243`: `Single Target -250F -25H`, script
+Effect 646 `effects.sql:1243`: name `Staff Auto Attack Damage`, desc `Single Target -250F -25H`, script
 `RangedPhysicalDamage`, `event_set_id` 262 (`Generic single-shot weapon target`).
 NVPs `HealthDamage` 25 and `FocusDamage` 250 (`effect_nvps.sql:25, 27`).
 
@@ -88,7 +93,7 @@ moniker `ITEM_Automatic_Weapon`, `event_set_id` 15, effects `{621}`,
 | 15 | | 15 | 1001 (Ability_End) | `KIS-SA_Burst_Source` | - | sequences.sql:785 |
 | 15 | | 2963 | 1003 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2989, sequences_nvp.sql:3655 |
 
-Effect 621 `effects.sql:7815`: `Single Target -200F -20H`, script
+Effect 621 `effects.sql:7815`: name `AW Auto Attack Damage`, desc `Single Target -200F -20H`, script
 `RangedPhysicalDamage`, `event_set_id` 289 (`Generic burst weapon target`).
 NVPs `HealthDamage` 20 and `FocusDamage` 200 (`effect_nvps.sql:37, 39`).
 The tooltip says -100F/-10H; the effect row executes (D-NC8, recorded in
@@ -114,7 +119,7 @@ effects `{736}`. It sits in set 4 beside 584.
 | 300 | ability source | 2959 | 1002 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2981, sequences_nvp.sql:3647 |
 | 300 | | 346 | 1001 (Ability_End) | `KIS-SA_Melee_Source` | - | sequences.sql:3169 |
 
-Effect 736 `effects.sql:7522`: `Strike Damage`, desc `-100F -10H`,
+Effect 736 `effects.sql:7522`: name `Strike Damage`, desc `-100F -10H`,
 **no script**, `event_set_id` 301
 (`Generic melee weapon target`), **no NVP rows**.
 
@@ -126,22 +131,24 @@ Effect 736 `effects.sql:7522`: `Strike Damage`, desc `-100F -10H`,
 | 301 | | 351 | 2005 | `KIS-SA_Melee_Target` | - | sequences.sql:3177 |
 | 301 | | 352 | 2006 | `KIS-SA_Melee_Target` | - | sequences.sql:3179 |
 
-The target presentation plays, but the effect deals no damage (no NVP,
-no script). See § Gaps and NC-12.
+The effect names a complete target set but deals no damage (no NVP, no
+script). Whether the target set plays at all is UNRESOLVED (the server never
+sends it). See § Gaps and NC-12.
 
 ### Ability 1433 Mob Strike (ScavDog melee; set 6 is proposed by NC-13)
 
 Ability row `abilities.sql:2047`: `ABILITY_TYPE_DD`, cooldown 2, melee,
-`max_range` 0, moniker `1470900795`, `event_set_id` 300, effects `{1717}`.
-No `ability_set_abilities` row names it, so no set holds it today. The
-moniker has no `monikers` row in the seed, so the weapon-family rule cannot
-be applied to it.
+`max_range` 0, `moniker_ids` `{1470900795}`, `event_set_id` 300, effects `{1717}`.
+No `ability_set_abilities` row names it, so no set holds it today.
+`moniker_ids` is `{1470900795}`, which has no `monikers` row (the only other
+use is test item 2143 'test 2', items.sql:12437), and `item_monikers` is `{}`,
+so the weapon-family rule has no input.
 
 The sequences are the same set 300 as the Jaffa melee ability 710
 (table above). Only the link ability to set is RECONSTRUCTION, from
 animation-links.md:74.
 
-Effect 1717 `effects.sql:3012`: `Strike Damage`, `-125F -15H` in its desc,
+Effect 1717 `effects.sql:3012`: name `Strike Damage`, desc `-125F -15H`,
 **no script**, `event_set_id` 301, **no NVP rows**. Its target sequences are
 the set 301 rows above (348-352). Effect and ability sets differ: the
 ability is on 300 and the effect on 301, which is the source/target pair.
@@ -149,13 +156,14 @@ ability is on 300 and the effect on 301, which is the source/target pair.
 ### Ability 983 Bite (ScavDog natural melee; unassigned)
 
 Ability row `abilities.sql:5036`: `ABILITY_TYPE_DD`, cooldown 3, melee,
-moniker `1470900795`, `event_set_id` 300, effects `{1092}`. No
+`moniker_ids` `{1470900795}`, `event_set_id` 300, effects `{1092}`. No
 `ability_set_abilities` row names it. Like 1433, it is RECONSTRUCTION at
 set 300 (animation-links.md:74, "creature bodies need a playtest").
 
-Effect 1092 `effects.sql:2471`: `Bite Damage`, `-125F -15H`, **`event_set_id`
-NULL**, **`script_name` NULL**, **no NVP rows**. The chain ends at the
-ability: set 300 plays its source hit (346), and nothing plays at the target.
+Effect 1092 `effects.sql:2471`: name `Bite Damage`, desc `-125F -15H`,
+**`event_set_id` NULL**, **`script_name` NULL**, **no NVP rows**. The chain
+ends at the ability: the server sends set 300's End sequence (346), and the
+effect names no target set.
 
 ### Ability 221 Energy Shock (PRU attack; ability set 2 and Straegis set 350)
 
@@ -169,7 +177,7 @@ hold it.
 | 802 | ability source (`Energy shock ability source`) | 1866 | 1001 (Ability_End) | `KIS-SA_Beam_Source` | `beamWeapon=EnergyShock` | sequences.sql:1269, sequences_nvp.sql:1139 |
 | 802 | | 2894 | 1002 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2851, sequences_nvp.sql:3515 |
 
-Effect 264 `effects.sql:7813`: `Energy Blast Effect`, script
+Effect 264 `effects.sql:7813`: name `Energy Blast Damage`, desc `Energy Blast Effect`, script
 `RangedEnergyDamage`, `event_set_id` 803 (`Energy shock effect target`).
 NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
 
@@ -184,11 +192,14 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
 ## Gaps
 
 1. **Chain ends with no sequence: 1092 (Bite, ability 983).** Its effect has
-   no `event_set_id` and no script. The ability's own set 300 plays, but the
-   hit has no target presentation. Fix or accept under NC-13 and NC-12.
+   no `event_set_id` and no script. The ability's own set 300 plays, and the
+   effect names no target set. No packet owns 1092: NC-12 covers 736 and
+   1717, NC-13 assigns 1433 only, and D-NC5 keeps 983 unassigned until NC-05.
+   NC-31 records it as UNRESOLVED.
 2. **Damage-inert target sets: 736 and 1717.** Both effects name set 301,
    which has five target sequences, but neither has a script or an NVP row.
-   The presentation is complete while the damage is zero. This is the
+   The target set is complete in the seed while the damage is zero; the server
+   does not read it. This is the
    `effect_inert` case that NC-12 and NC-07 (item 6) cover.
 3. **Source sequences inside target sets.** Set 289 holds `1105`
    (`KIS-SA_Burst_Source`, event 2008), set 262 holds `1805`
@@ -202,12 +213,12 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
    name and not proof of a family. The beam on 802 and 803 is the PRU's only
    presentation. NC-05 (ScavDog) and NC-06 (PRU, NID) decide whether a
    creature-appropriate sequence exists.
-5. **No weapon-family rule for 1433 and 983.** Their moniker
-   `1470900795` has no `monikers` row in the seed, so the family cannot be
-   read from the seed. Set 300 is a judgement (RECONSTRUCTION, D-NC5).
-6. **Ability and effect sets differ by design.** 1433 and 983 are on 300,
-   their effect 1717 on 301. This is the source/target pair, so it is not a
-   mismatch. The same holds for 559/621 (15/289), 584/646 (3/262),
+5. **No weapon-family rule for 1433 and 983.** Their `item_monikers` is
+   empty and their `moniker_ids` value 1470900795 has no `monikers` row, so
+   the family cannot be read from the seed. Set 300 is a judgement (RECONSTRUCTION, D-NC5).
+6. **Ability and effect sets differ by design.** 1433 is on 300 and its
+   effect 1717 on 301. 983 is on 300 but its effect 1092 has no set (Gap 1).
+   A source/target pair is not a mismatch. The same holds for 559/621 (15/289), 584/646 (3/262),
    710/736 (300/301) and 221/264 (802/803).
 7. **Not presentation: 559 `required_ammo` 3.** NPCs have no ammo gate
    (F4 in README). Recorded for NC-11; no effect on the sets above.
