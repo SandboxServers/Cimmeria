@@ -103,7 +103,7 @@ columns are Guard (160) and Lieutenant (159).
 | Ability 221 | `Energy Shock`, ranged, `ABILITY_TYPE_DD`, event set 802, effects `{264}`, no monikers, desc `80F 16H` | EARLIEST LEGACY DATA | `db/resources/Abilities/Seed/abilities.sql:5078` | NC-02 |
 | Effect 264 | `Energy Blast Damage`, script `RangedEnergyDamage`, event set 803 | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effects.sql:7813` | NC-07 |
 | Effect 264 NVPs | HealthDamage 16 (H), FocusDamage 80 (F) | EARLIEST LEGACY DATA | `db/resources/Effects/Seed/effect_nvps.sql:33`, `:35` | NC-02 |
-| Damage type | Script `RangedEnergyDamage` maps to `DT_ENERGY`; the ammo-shot path defaults to `DT_PHYSICAL` when no shot is present, so which one a PRU hit uses is open | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/combat/damage/absorb.rs:87-90`; `crates/cell-combat/src/cell/abilities/damage_apply/mod.rs:221` | NC-07 |
+| Damage type | Direct hits use `DT_PHYSICAL` whenever no special-ammo shot is present, which is every NPC shot, so 221 lands as physical (confirmed, [runtime-blockers.md](runtime-blockers.md) § 2). Only DoT pulses use `script_damage_type` (`RangedEnergyDamage` gives `DT_ENERGY`) | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/combat/damage/absorb.rs:87-90`; `crates/cell-combat/src/cell/abilities/damage_apply/mod.rs:221`; [runtime-blockers.md](runtime-blockers.md) | NC-07 |
 | Event sets | Template event set 570 `Players default event set`; ability event set 802 `Energy shock ability source`; effect event set 803 `Energy shock effect target` | EARLIEST LEGACY DATA | `entity_templates.sql:9`; `db/resources/Events/Seed/event_sets.sql:803`, `:913` | NC-04 |
 | Loot, faction, level | loot NULL; faction 10; level 1; `use_cover` false | EARLIEST LEGACY DATA | `entity_templates.sql:9` | NC-02 |
 | Sequence ids, animation, audio, client build | Not checked | UNRESOLVED | (client) | NC-06 |
@@ -126,12 +126,8 @@ columns are Guard (160) and Lieutenant (159).
   event set or script. Packets: NC-13, NC-05.
 - **O6.** Effect 736 (ability 710) has no script and no NVPs, so it is inert
   in the seeds. Packet: NC-12.
-- **O7.** The damage type of effect 264 (PRU) is open: the script maps to
-  `DT_ENERGY` (`absorb.rs:87-90`), but the ammo path defaults to
-  `DT_PHYSICAL` (`damage_apply/mod.rs:221`). Packet: NC-07.
-- **O8.** Runtime suspects, from README F10 and not re-checked here: NPC
-  mitigation 0/0, damage type forced to `DT_PHYSICAL`, DoT death firing no
-  `entity_death`, and NPC LOS and target validation. Packet: NC-07.
+- **O7.** Confirmed physical for direct hits by NC-07 ([runtime-blockers.md](runtime-blockers.md) § 2); the fix is a proposed packet. Packet: NC-07.
+- **O8.** Runtime suspects, re-verified by NC-07 in [runtime-blockers.md](runtime-blockers.md): NPC mitigation 0/0 confirmed (§ 1), damage type forced physical confirmed for direct hits (§ 2), DoT kill event fixed (§ 3), NPC LOS and target validation not a bug with one edge unverified (§ 4). Packet: NC-07.
 - **O9.** No ammo gate and no reload exist for NID, per README F4. Not
   re-checked here. Packet: NC-11.
 - **O10.** All four templates (4, 24, 76, 159/160) use event set 570
