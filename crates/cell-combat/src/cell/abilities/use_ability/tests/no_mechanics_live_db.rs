@@ -23,9 +23,11 @@ use crate::test_support::require_db_or_skip;
 /// toggles 1016, 1017, 1018, 1235 and the purges 2027, 2099, 2865), plus the
 /// minigames scripts: MG-62's Converse launchers 1327 and 2089 and MG-63b's Prison
 /// Boot hold 1597 and its release 1598, and DR-S1's Aimed Shot: Torso 640 (its
-/// effect 703 now has the numbers its text states). The one number to update when a packet
+/// effect 703 now has the numbers its text states). NC-12 gave 710 and 1433 their
+/// damage payloads (effects 736 and 1717, both bound to `MeleePhysicalDamage`), so
+/// they join the count. The one number to update when a packet
 /// lights up more abilities.
-const HAS_MECHANICS_TODAY: usize = 289;
+const HAS_MECHANICS_TODAY: usize = 291;
 
 /// The archetype starters every new character holds: Pistol Shot, Strike,
 /// Heal Focus, Health Heal, Recuperation.

@@ -61,7 +61,7 @@ mod tests {
 
     /// Sentinel template ids (R7), unique per test because the once-per-template
     /// set is process-wide.
-    const PLACEHOLDER_ID: i32 = 0x7000_0201;
+    const PLACEHOLDER_ID: i32 = 0x7000_0205;
     const UNRESOLVED_ID: i32 = 0x7000_0202;
     const EXPLICIT_ID: i32 = 0x7000_0203;
 
