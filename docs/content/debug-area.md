@@ -2,7 +2,7 @@
 title: "Debug Area"
 type: reference
 audience: engineers, testers
-last_updated: 2026-11-01
+last_updated: 2026-11-27
 ---
 
 # Debug Area
@@ -31,7 +31,7 @@ player, the account and both worlds. The rule lives in
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
 stargate (DA-07), the ring transports that link them (DA-08, DA-11), the
-System Lords' summit (DA-09) and the Visual NPC Lineup (DA-10).
+System Lords' summit (DA-09) and the Visual NPC Lineup (DA-10), and the NC-03 combat reference range (Z12).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -68,6 +68,7 @@ in their own seed files:
   and screens 200020-200021, inside the block templates 1600-1609, spawns
   14100-14109, chains 24050-24069. See [Minigame terminals](#minigame-terminals).
 - DR-03b (the Armory, [debug-armory campaign](../analysis/debug-armory/README.md)): `entity_templates_debug_area_armory.sql` (templates 1610-1616), `spawnlist_debug_area_armory.sql` (spawns 14110-14116) and `item_lists_debug_area_armory.sql` (buy lists 1310-1316, sell list 1349), inside the free block templates 1610-1659, spawns 14110-14299, item lists 1310-1349. See [Armory](#armory).
+- NC-03 (Z12, the combat reference range, [npc-combat-reference campaign](../analysis/npc-combat-reference/README.md)): `entity_templates_debug_area_reference.sql` (templates 1380-1381; 1382-1389 reserved) and `spawnlist_debug_area_reference.sql` (spawns 14300-14304; 14305-14319 reserved), inside the block templates 1380-1389, spawns 14300-14319. See [Combat reference range](#combat-reference-range).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -654,8 +655,8 @@ What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the 
 
 Z12 (NC-03) is where the NPC combat reference campaign
 ([docs/analysis/npc-combat-reference](../analysis/npc-combat-reference/README.md))
-checks what each reference enemy fires and shows. It is seed only: four pens
-of the real templates, so a later packet changes behaviour and these rows stay.
+checks what each reference enemy fires and shows. It is seed only: four pens: the real templates 24, 4 and 76 and the Jaffa
+clones 1380 and 1381, so a later packet changes behaviour and these rows stay.
 It is aggressive on purpose: every row has `aggression_override` NULL, so each
 NPC attacks a player who comes inside its aggro radius. The enemy gallery (Z7)
 stays neutral.
@@ -685,6 +686,7 @@ vendor (1302, 13006). Spawns 14300-14319 are the range's block (D-NC9); 14305
 to 14319 are reserved for it.
 
 ## Reach between stations
+
 The plan keeps hostile zones apart. The guards in
 `service::tests::npc_ai::debug_area::reach` read every world-1300 row of every
 seed file, so another packet's NPCs take part as soon as they are seeded:
