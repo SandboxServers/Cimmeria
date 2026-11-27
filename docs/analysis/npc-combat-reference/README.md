@@ -60,11 +60,30 @@ Every registry row and every reconstructed seed comment uses exactly one of:
 | EARLIEST LEGACY DATA | The `db/resources` seeds (the Project Giza extraction) or the 2009 Python server, not checked against the client |
 | CURRENT CIMMERIA IMPLEMENTATION | What the Rust server does today, cited by file and line |
 | STRONGLY INFERRED | Indirect client evidence, such as a matching body family plus a generic KIS set, with no direct link |
-| RECONSTRUCTED | Behaviour this campaign supplies, such as a damage payload taken from the ability's own description |
+| RECONSTRUCTED | Behaviour or data Cimmeria chose by judgement, in this campaign or an earlier PR, such as a damage payload taken from the ability's own description |
 | UNRESOLVED | Unknown; listed in the registry's open list |
 
 `db/resources` is Project Giza's approximation, not CME's database
 (`.claude/agent-memory` reference note), so a seed row alone is never ORIGINAL.
+
+A seed value is classed by its evidence, not by who wrote it. RECONSTRUCTED
+covers any value Cimmeria chose by judgement, in this campaign or an earlier
+PR (cite the PR). CURRENT CIMMERIA IMPLEMENTATION is reserved for Rust server
+behaviour and is never used for a seed value. For an ability's
+`event_set_id` link (wave-0 ruling D1, `worknotes/wave0.md`):
+
+- the 35 links the Giza seed already held (non-NULL before PR #822,
+  `f153138b5`) are EARLIEST LEGACY DATA (559, 584, 710 and 221 are among them);
+- PR #822 Tier 1 (the weapon-family rule) and Tier 2 (what the weapon's items
+  fire) are STRONGLY INFERRED;
+- PR #822 Tier 3 (judgement calls, including 1433 and 983 to 300) is
+  RECONSTRUCTED;
+- ORIGINAL CLIENT VERIFIED needs a cooked client record naming that ability,
+  such as an `<ItemEventSet AbilityID=…>` row; the client has no ability-keyed
+  lookup (F11), so most links can never earn it.
+
+The event set's own sequences and effect links stay EARLIEST LEGACY DATA,
+because PR #822 changed only `abilities.event_set_id`.
 
 ## Findings
 
