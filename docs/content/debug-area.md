@@ -2,7 +2,7 @@
 title: "Debug Area"
 type: reference
 audience: engineers, testers
-last_updated: 2026-11-01
+last_updated: 2026-11-27
 ---
 
 # Debug Area
@@ -31,7 +31,7 @@ player, the account and both worlds. The rule lives in
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
 stargate (DA-07), the ring transports that link them (DA-08, DA-11), the
-System Lords' summit (DA-09) and the Visual NPC Lineup (DA-10).
+System Lords' summit (DA-09) and the Visual NPC Lineup (DA-10), and the NC-03 combat reference range (Z12).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -68,6 +68,7 @@ in their own seed files:
   and screens 200020-200021, inside the block templates 1600-1609, spawns
   14100-14109, chains 24050-24069. See [Minigame terminals](#minigame-terminals).
 - DR-03b (the Armory, [debug-armory campaign](../analysis/debug-armory/README.md)): `entity_templates_debug_area_armory.sql` (templates 1610-1616), `spawnlist_debug_area_armory.sql` (spawns 14110-14116) and `item_lists_debug_area_armory.sql` (buy lists 1310-1316, sell list 1349), inside the free block templates 1610-1659, spawns 14110-14299, item lists 1310-1349. See [Armory](#armory).
+- NC-03 (Z12, the combat reference range, [npc-combat-reference campaign](../analysis/npc-combat-reference/README.md)): `entity_templates_debug_area_reference.sql` (templates 1380-1381; 1382-1389 reserved) and `spawnlist_debug_area_reference.sql` (spawns 14300-14304; 14305-14319 reserved), inside the block templates 1380-1389, spawns 14300-14319. See [Combat reference range](#combat-reference-range).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -103,6 +104,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | NPC-vs-NPC (#1009) | Z6 arena | DA-U32 to DA-U34 |
 | Cover and line of sight | Z8 cover course | DA-U35, DA-U36 |
 | Death and respawn | Z9 death yard, respawners 130 and 131 | DA-U37, DA-U38 |
+| NPC combat reference (NID, PRU, ScavDog, Jaffa) | Z12 combat reference range | NC-03; the NC packets (docs/analysis/npc-combat-reference/) |
 | Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
 | Ring transport | The nine ring stations (DA-08, #1234; Lineup, DA-11) | DA-U46 |
@@ -649,6 +651,40 @@ What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the 
 | Sequence ids the client resolves | `crates/resources/src/base/sequence_overrides.rs` (`DEBUG_AREA_RING_RIGS`) |
 | Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--9-regions-fully-connected-cimmeria-da-08-da-11) |
 
+## Combat reference range
+
+Z12 (NC-03) is where the NPC combat reference campaign
+([docs/analysis/npc-combat-reference](../analysis/npc-combat-reference/README.md))
+checks what each reference enemy fires and shows. It is seed only, with four pens: the real templates 24, 4 and 76 and the Jaffa
+clones 1380 and 1381, so a later packet changes behaviour and these rows stay.
+It is aggressive on purpose: every row has `aggression_override` NULL, so each
+NPC attacks a player who comes inside its aggro radius. The enemy gallery (Z7)
+stays neutral.
+
+The pens stand on a flat navmesh terrace west of the south compound (y about
+5.1 to 5.5, around x 40 to 100, z -850 to -900), 60 m or more from every other
+world-1300 spawn, respawner and ring pad, and 41 to 70 m apart. Reach it on foot
+from the Z1 arrival (251, 8, -962): about 280 to 370 m west and a little north;
+the AI slope pad (81, 0.59, -782) is 70 to 80 m north-north-east of the
+nearest pens. Respawn is 20 s for every row.
+
+| Tag | Spawn | Template | Ability set | Abilities | Expected today |
+|---|---|---|---|---|---|
+| `DebugArea_Ref_NID` | 14300 | 24 NID Guard | 3 | 559 | Fires the SMG ability; the reference human |
+| `DebugArea_Ref_PRU` | 14301 | 4 Prisoner retrieval unit | 2 | 221 | Fires its drone ability |
+| `DebugArea_Ref_ScavDog` | 14302 | 76 ScavDog | none | none | Falls back to the Pistol Shot placeholder (NC-13 gives it a melee set) |
+| `DebugArea_Ref_JaffaGuard` | 14303 | 1380 Praxis Jaffa Guard | 4 | 584, 710 | Staff strike and the staff's ranged ability; faction 10 |
+| `DebugArea_Ref_JaffaLieutenant` | 14304 | 1381 Praxis Jaffa Lieutenant | 4 | 584, 710 | The same, beside the guard |
+
+Templates 1380 and 1381 copy 1371 (the DA-04 Praxis Jaffa) with faction 10, a
+20 s respawn and the names 8917 and 8918. Their look is byte-identical to
+1371, so the lineup actor guard needs no new actor.
+
+Player fixtures reuse what Z2 already has: the ability granter (template 1300,
+spawn 13020), the Basic Equipment Quartermaster (300, 13001) and the munitions
+vendor (1302, 13006). Spawns 14300-14319 are the range's block (D-NC9); 14305
+to 14319 are reserved for it.
+
 ## Reach between stations
 
 The plan keeps hostile zones apart. The guards in
@@ -701,6 +737,12 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
     timers, and each template's aggro radius. It also runs two fights with the
     seeded abilities: the squad kills a fresh character within seven AI ticks,
     and the spectator pair's kill rolls no loot.
+- `crates/cell/src/cell/service/tests/npc_ai/debug_area_combat/reference/` (NC-03)
+  pins the Z12 rows: the five tags on templates 24, 4, 76, 1380 and 1381 with a
+  20 s respawn and no aggression override, the pens 35 m or more apart, each
+  template's abilities today, and (live DB) that the loaders return the five
+  rows with the Jaffa clones on faction 10. The sibling files are stubs the later
+  NC packets fill.
 - `crates/cell/src/cell/service/tests/npc_ai/debug_area/` (DA-03) runs on the
   same files and reads every world-1300 row of every seed file, DA-04's
   included. It needs no database.

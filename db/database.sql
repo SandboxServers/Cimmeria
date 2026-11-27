@@ -329,6 +329,7 @@
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_armory.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_reference.sql
 \ir resources/Entities/Seed/entity_templates_tollana.sql
 \ir resources/Entities/Seed/entity_templates_union_omega.sql
 \ir resources/Entities/Seed/entity_templates_sgc_w1_union.sql
@@ -413,6 +414,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_armory.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_reference.sql
 \ir resources/Worlds/Seed/spawnlist_tollana.sql
 \ir resources/Worlds/Seed/spawnlist_union_omega.sql
 \ir resources/Worlds/Seed/spawnlist_sgc_w1_union.sql
