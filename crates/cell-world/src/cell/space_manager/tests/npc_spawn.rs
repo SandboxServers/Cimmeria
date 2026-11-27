@@ -92,7 +92,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         components: Some(vec!["Comp1".to_string()]),
         loot_table_id: Some(2),
         is_stationary: false,
-        ability_ids: vec![],
+        ability_ids: vec![592],
         respawn_secs: None,
         patrol_path: vec![],
         patrol_point_delay_secs: 2.0,
