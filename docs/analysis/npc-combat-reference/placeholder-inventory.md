@@ -12,7 +12,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
   `RequireWeaponEvidence`; the other 470 would hold fire.
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
-- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 40 candidates (4 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 6 are unaffected and 32 need no fix.
+- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 42 candidates (6 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 6 are unaffected and 34 need no fix.
 
 ## Method
 
@@ -27,7 +27,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
 - Verdict: `keeps 592` when a component starts with `WP-Human.`, else `holds fire`
   (the C1 `RequireWeaponEvidence` rule).
 - Callers and fallback tests: a scanner that strips comments and literals, then matches
-  brace-delimited fn and `cfg(test)` module bodies. It is a heuristic, not a compile.
+  brace-delimited fn and `cfg(test)` module bodies. It is a heuristic, not a compile. Counts are taken at origin/main d780348e4 plus NC-10's tests.
 - Evidence classes (README § Evidence classifications): the template rows, components, factions and spawn counts are EARLIEST LEGACY DATA (the `db/resources` seeds). The caller and test lists, and what `spawn_npc` adds, are CURRENT CIMMERIA IMPLEMENTATION (code, heuristic scan). The `keeps 592` / `holds fire` verdict is RECONSTRUCTED (C1 rule applied to seed components; a prediction for NC-30). The `scripted` flag is UNRESOLVED (no seed column). No row is ORIGINAL CLIENT VERIFIED or STRONGLY INFERRED.
 
 ## 1. Templates with NULL `ability_set_id`
@@ -602,6 +602,8 @@ confirm it per test when NC-21 lands. `add_ability(` of 592 or `NPC_DEFAULT_ABIL
 | cell-world | cell-world/src/cell/space_manager/tests/npc_spawn.rs | spawn_npc_from_record_sets_template_fields | 67 | needs fix (record, empty ability_ids) | `592` in `ability_ids` |
 | cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_ability_ids_skips_default_fallback | 22 | not an NPC-fallback test | none |
 | cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_falls_back_to_default | 20 | asserts the fallback itself | none |
+| cell-world | cell-world/src/cell/spawner_tests/spawn_records.rs | spawn_record_with_empty_ability_ids_knows_exactly_592 | 11 | asserts the fallback itself (added by NC-10) | none |
+| cell-world | cell-world/src/cell/combat/combat_profile/report.rs | placeholder_profile_logs_once_per_template_through_spawn | 22 | needs fix: expects the Legacy placeholder row (added by NC-10) | none until D-NC1 flips the policy; then assert the unresolved WARN instead |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_holds_fire_when_target_outside | 47 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_with_short_max_range_fires_when_target_inside | 28 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range | 29 | already explicit | none |
