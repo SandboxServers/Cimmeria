@@ -655,7 +655,7 @@ What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the 
 
 Z12 (NC-03) is where the NPC combat reference campaign
 ([docs/analysis/npc-combat-reference](../analysis/npc-combat-reference/README.md))
-checks what each reference enemy fires and shows. It is seed only: four pens: the real templates 24, 4 and 76 and the Jaffa
+checks what each reference enemy fires and shows. It is seed only, with four pens: the real templates 24, 4 and 76 and the Jaffa
 clones 1380 and 1381, so a later packet changes behaviour and these rows stay.
 It is aggressive on purpose: every row has `aggression_override` NULL, so each
 NPC attacks a player who comes inside its aggro radius. The enemy gallery (Z7)
