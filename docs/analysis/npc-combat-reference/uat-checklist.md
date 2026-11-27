@@ -50,18 +50,18 @@ UNRESOLVED item O1 in the registry. A mismatch is not a presentation fault.
 
 ## Block 2: Praxis Jaffa Guard (template 1380, spawn 14303) and Lieutenant (1381, spawn 14304)
 
-The guard and lieutenant share the set: 584 (staff strike, melee) and 710
-(the staff's ranged bolt), faction 10, a 20 s respawn. Templates 1380 and 1381
+The guard and lieutenant share the set: 584 (Staff Auto Attack, the ranged bolt) and 710
+(Staff Melee AA, the staff swing), faction 10, a 20 s respawn. Templates 1380 and 1381
 copy 1371 and are byte-identical to it. The staff in hand is the existing look;
 NC-22 adds the staff to 159 and 160 only (D-NC3), not to these pens. The
-melee damage rides effects 736 and 1717 (NC-12, hand effects 470 to 479).
+melee damage rides effect 736 (NC-12, hand effects 470 to 473).
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
-| J1 (NC-U2) | Stand 15 m off the guard at 55 5.8 -890 and target it | The serpent staff is visible in its hand, it raises it and a ranged bolt flies at you with its sound | Ability 710 used by `DebugArea_Ref_JaffaGuard` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J2 (NC-U3) | Walk to 2 m (42 5.8 -890) and wait | It swings the staff (ability 584): staff arc and sound, your Health drops | Ability 584 use; melee damage from effect 736 or 1717 (NC-12) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J3 (NC-U3) | Walk back out to about 8 m | It stops swinging and returns to the bolt | The ability choice flips to 710 once you are out of reach (NC-20) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J4 | Repeat J1 on the lieutenant at spawn 14304 (40 5.25 -900) | The lieutenant shows the same staff and bolt, beside the guard | Ability 710 from `DebugArea_Ref_JaffaLieutenant` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| J1 (NC-U2) | Stand 15 m off the guard at 55 5.8 -890 and target it | The serpent staff is visible in its hand, it raises it and a ranged bolt flies at you with its sound | Ability 584 used by `DebugArea_Ref_JaffaGuard` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| J2 (NC-U3) | Walk to 2 m (42 5.8 -890) and wait | It swings the staff (ability 710): staff arc and sound, your Health drops | Ability 710 use; melee damage from effect 736 (NC-12) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED (swing and sound); RECONSTRUCTED (D-NC2) for the damage number |
+| J3 (NC-U3) | Walk back out to about 8 m | It stops swinging and returns to the bolt | The ability choice flips back to 584 once you are out of reach (NC-20) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| J4 | Repeat J1 on the lieutenant at spawn 14304 (40 5.25 -900) | The lieutenant shows the same staff and bolt, beside the guard | Ability 584 from `DebugArea_Ref_JaffaLieutenant` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 
 ## Block 3: ScavDog (template 76, spawn 14302, set 6 = 1433)
 
