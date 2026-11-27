@@ -91,7 +91,7 @@ NC-03 stages Z12 "Combat reference range" in world 1300 from seeds only:
   They copy DA-04 1371's look column for column (body, components with the
   staff, colours, tint, mesh), so the lineup guard needs no new actor. They
   set faction 10, set 4 and name ids 8917 and 8918.
-- **Spawns 14110-14129**, tagged `DebugArea_Ref_*`, with aggressive defaults
+- **Spawns 14300-14319** (D-NC9), tagged `DebugArea_Ref_*`, with aggressive defaults
   (`aggression_override` NULL) and 20 s respawns. They place the **real**
   templates 24, 4 and 76 plus the clones.
 - **Player fixtures** reuse what Z2 already has: the ability granter (template
@@ -123,6 +123,7 @@ says yes. NC-05 upgrades or contradicts it later.
 | D-NC6 | Make `weapon_item_id` load-bearing? | No. The `WP-*` visual component is the weapon evidence; `weapon_item_id` stays informational | BlockedDecision (contract assumes the recommendation) |
 | D-NC7 | Live-client UAT in the lab | Ask first, per run. Use Haiku lab-drivers at Z12, verified against the server log | BlockedDecision (gates W4) |
 | D-NC8 | 559's tooltip (-100F/-10H) against effect 621 (-200F/-20H) | No change. The effect row executes; record it as UNRESOLVED in the registry | BlockedDecision (record only) |
+| D-NC9 | NC-03 blocked: C3's spawns 14110-14129 belong to the DR-03b Armory (14110-14299, rows 14110-14116). Where does Z12 go? | Spawns 14300-14319 (14300-14304 used), footer floor 14319; templates 1380/1381 stand. Checked against `origin/main` 3a20a96a0: no spawnlist row from 14117 to 15799 and no doc reserves 14300+. The coder's 13700-13719 was rejected: it lies in DA-04's block, and `debug_area/reach.rs` `the_reach_guards_see_da04_rows` counts every 13600-13799 row against `spawnlist_debug_area_combat.sql` alone, so a separate reference file breaks it. C3, C4 and NC-03 are re-specced; re-dispatch NC-03 | Decided (architect ruling, 2026-11-27) |
 
 ## Packets
 

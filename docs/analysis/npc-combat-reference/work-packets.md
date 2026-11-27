@@ -155,13 +155,18 @@ are a telemetry contract that NC-44 greps for.
 | What | Ids | Owner |
 |---|---|---|
 | Debug Area templates | 1380 Jaffa Guard clone, 1381 Jaffa Lieutenant clone (1382-1389 reserved) | NC-03 |
-| Debug Area spawns | 14110-14129 (14110-14114 used); the footer floor is 14129 | NC-03 |
+| Debug Area spawns | 14300-14319 (14300-14304 used); the footer floor is 14319 (D-NC9) | NC-03 |
 | Spawn tags | `DebugArea_Ref_NID`, `DebugArea_Ref_PRU`, `DebugArea_Ref_ScavDog`, `DebugArea_Ref_JaffaGuard`, `DebugArea_Ref_JaffaLieutenant` | NC-03 |
 | Ability set | 6 = `ScavDog: Mob Strike (RECONSTRUCTED, NC-13)` holding 1433 | NC-13 |
 | Hand effect NVPs | 470-479 (470/471 for effect 736, 472/473 for effect 1717) | NC-12 |
 
-These blocks were checked free on 2026-11-27: templates 1378-1399, NVPs
-463-489 and spawns from 14110 hold no rows. The seed-sequence
+These blocks were re-checked free against `origin/main` 3a20a96a0 on
+2026-11-27 (D-NC9): templates 1378-1399, NVPs 463-489, ability set 6 and
+spawns 14117-15799 hold no rows, and no doc reserves 14300-14319. Never use
+spawns 14110-14299 (the DR-03b Armory's block, `debug-area.md` line 70) or
+13642-13799 (DA-04's block: `debug_area/reach.rs`
+`the_reach_guards_see_da04_rows` counts every row in 13600-13799 against
+`spawnlist_debug_area_combat.sql` alone). The seed-sequence
 guard floors (templates 1409, spawns 23199) already cover these blocks.
 
 ### C4 Test layout
@@ -188,7 +193,7 @@ NC-03 makes these `pub(super)` in `debug_area_combat/live_db.rs`:
 reaches them as `super::super::live_db::*`. `reference/mod.rs` exports:
 
 ```rust
-pub(super) const REF_SPAWNS: std::ops::RangeInclusive<i32> = 14110..=14129;
+pub(super) const REF_SPAWNS: std::ops::RangeInclusive<i32> = 14300..=14319;
 /// The one world-1300 row tagged `tag`, from `super::world_records()`.
 pub(super) fn ref_row<'a>(records: &'a [SpawnRecord], tag: &str) -> &'a SpawnRecord;
 ```
@@ -335,13 +340,13 @@ NC-01, NC-03, NC-07, NC-04, NC-02, NC-05, NC-06.
   needs no new actor. Add a footer that keeps the template sequence past
   1389, in the form the `entity_templates_debug_area_combat.sql` footer uses
   (`GREATEST`).
-- **Spawns:** 14110 NID (template 24), 14111 PRU (4), 14112 ScavDog (76),
-  14113 Jaffa Guard (1380) and 14114 Jaffa Lieutenant (1381):
+- **Spawns:** 14300 NID (template 24), 14301 PRU (4), 14302 ScavDog (76),
+  14303 Jaffa Guard (1380) and 14304 Jaffa Lieutenant (1381):
   - world 1300, tags as in C3, `aggression_override` NULL (template default,
     so aggressive), `respawn_secs` 20, `loot_table_id` NULL (template
     default);
   - copy the column list from the existing Debug Area spawnlist file;
-  - add a footer `setval(..., GREATEST(<current>, 14129))` in the same form
+  - add a footer `setval(..., GREATEST(<current>, 14319))` in the same form
     as the file that holds spawns 14100-14105 (grep `14109` under
     `db/resources`).
 - **Placement:**

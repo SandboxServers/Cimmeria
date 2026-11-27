@@ -35,4 +35,4 @@ work-packets-w1-w2.md and work-packets-w3-w5.md.
 | W4 | lab NC-40..44 (ask first, D-NC7), plus NC-32 docs | W3 merged |
 | W5 | NC-50 review, NC-51 close-out | W4 |
 
-In flight: none. Open decisions: D-NC1..D-NC8, all BlockedDecision (README).
+In flight: NC-03, re-dispatch on D-NC9 (Decided: spawns 14300-14319). Open: D-NC1..D-NC8, all BlockedDecision (README).
