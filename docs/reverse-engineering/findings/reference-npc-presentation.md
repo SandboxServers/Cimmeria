@@ -226,7 +226,7 @@ melee distance 1 and `StaffRanged` at melee distance 2 (SI, from the matching by
 stance AnimSets and the KD animation names are OCV; that `KIS-SA_Melee_Source` selects
 those KD entries by key is UNR, see Unresolved).
 
-- `KIS-SA_Melee_Source` reads the weapon's melee KD.
+- `KIS-SA_Melee_Source` is the melee source template (OCV, nodes 774-777). That it selects the weapon's melee KD entries by key is UNR.
 - The staff KD names `sMAttack1` and `sMAttack2` (exports 514 and 515).
 - `sMAttack1` exists in StaffMelee and StaffRanged; `sMAttack2` exists in StaffMelee
   only (so `JF-Staff_Melee_02` has nothing to play in StaffRanged).
@@ -259,8 +259,7 @@ The 12 `KismetData` entries:
 | 219 | `HM-Hand2Hand_Melee_02` | 2 | Melee2 | `sMAttack2` | — | OCV |
 | 788 | `HM-Sing_MELH2H` | 2 | singmelee | — | `melee_gen/h2h/miss` | OCV |
 
-`WP_HandToHand_1A` has no serialized `Weapon` byte (OCV: export 74 lists only
-`BodyVisuals`), so which stance an unarmed Jaffa uses is UNR. The `Hand2Hand` stance
+`WP_HandToHand_1A` has no serialized `Weapon` byte (OCV: no `Weapon` property among export 74's serialized properties), so which stance an unarmed Jaffa uses is UNR. The `Hand2Hand` stance
 (`Weapon = 4`, `Combat = 1`) and its `sMAttack1`/`sMAttack2` sequences exist (OCV), but
 nothing read links the component to it. It has no ranged KD at all, so set 3 has
 nothing to draw for templates 159 and 160 (SI).
@@ -401,7 +400,7 @@ the turret, not a socket (SI).
   - `Mul_CA-DroneFlyerStatsisBeam` (`WFX-StasisBeam`) is a second beam under the key
     `Stasis`. No seed set examined here uses it (UNR).
 - **Target set 803:** its `KIS-SA_Sing_Target` sequences find the four hit-kind
-  entries (52–55) under key `EnergyShock` (SI). There is no miss entry
+  entries (52–55) under key `EnergyShock` (SI; the KeyName each node is fed is UNR). There is no miss entry
   (SequenceEvent 11) on the drone, so a missed energy shock has no impact effect
   (OCV that the entry is absent, SI that nothing draws).
 - Six `ObjectRedirector`s in the package (69–74) carry older names:
