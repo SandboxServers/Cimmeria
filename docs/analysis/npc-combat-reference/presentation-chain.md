@@ -17,11 +17,13 @@ An ability plays its presentation through `abilities.event_set_id`. The set
 needs an `Ability_End` sequence (event 1001) to animate at all. An effect
 names a target set through `effects.event_set_id`; its sequences are events
 2002-2006. The server reads only the ability's set (`use_ability/sequence.rs`
-sends events 1000, 1001 and 1002), and nothing reads `effects.event_set_id`,
-so whether the client plays the target set is UNRESOLVED (NC-06). Each sequence names a Kismet script
-(`sequences.kismet_script_name`), and some sequences carry NVPs
-(`sequences_nvp`). The client resolves the set by id and never reads the
-ability (animation-links.md, "The client has no ability-keyed lookup").
+sends events 1000, 1001 and 1002), and nothing reads
+`effects.event_set_id`, so whether the client plays the target set is
+UNRESOLVED (NC-06).
+Each sequence names a Kismet script (`sequences.kismet_script_name`), and
+some sequences carry NVPs (`sequences_nvp`). The client resolves the set
+by id and never reads the ability (animation-links.md, "The client has no
+ability-keyed lookup").
 
 Two patterns repeat in this data:
 
@@ -207,11 +209,11 @@ NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
    A target set should not carry a source animation. Whether it plays on the
    target is unknown. NC-06 checks it in the client.
 4. **Human packages on creature and construct chains.** Every chain above
-   names `KIS-abilities_human.*`. The ScavDog chains (1433, 983 on sets 300
-   and 301) and the PRU chain (221 on sets 802 and 803) are not human. The
-   client packages are generic per mechanic, so the prefix is a package
-   name and not proof of a family. The beam on 802 and 803 is the PRU's only
-   presentation. NC-05 (ScavDog) and NC-06 (PRU, NID) decide whether a
+   names `KIS-abilities_human.*`. The ScavDog chains (1433 on sets 300 and 301,
+   983 on set 300 only) and the PRU chain (221 on sets 802 and 803) are not
+   human. The client packages are generic per mechanic, so the prefix is a
+   package name and not proof of a family. The beam on 802 and 803 is the PRU's
+   only presentation. NC-05 (ScavDog) and NC-06 (PRU, NID) decide whether a
    creature-appropriate sequence exists.
 5. **No weapon-family rule for 1433 and 983.** Their `item_monikers` is
    empty and their `moniker_ids` value 1470900795 has no `monikers` row, so
