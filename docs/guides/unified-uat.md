@@ -1242,6 +1242,27 @@ A GM-only test map, world 1300 `DebugArea` on the Ihpet_Crater_Light map, with o
 
 Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-area.md](../content/debug-area.md), [character-creation.md, Starter kit](../gameplay/character-creation.md).
 
+## NPC combat reference
+
+The NPC combat reference campaign ([ledger](../analysis/npc-combat-reference/README.md)) gave the NID Guard, Praxis Jaffa, ScavDog and Prisoner Retrieval Unit their own abilities at the Debug Area Z12 range, and stopped a template with no ability set from firing the humanoid Pistol Shot (592): only a template with a human firearm component keeps it (D-NC13). Reference: [npc-combat-references.md](../gameplay/npc-combat-references.md). Lab results: [w4-lab-results.md](../analysis/npc-combat-reference/w4-lab-results.md).
+
+**Status:** Partly works. The lab run of 2026-11-27 (server `086fc2710`) passed with notes on the server side: NID 559/5310, PRU 221/264, ScavDog 1433, Jaffa 584/710/736, and no 592 anywhere in the session. **Animation, muzzle effect, VFX and sound have not been verified in a client**, and sound is UNRESOLVED (the lab has no audio), so a failure in a visual row is a new finding, not a regression.
+
+**Prerequisites:** a GM character in the Debug Area at Z12 (`.gotolocation DebugArea`, then the reference range; spawns 14300 to 14319), `.aggro on`, `/gmsetgodmode 1` to survive. Health refills through death and Release: the GM health commands answer "target not found" in the lab.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| NC-U1 | At Z12, kill the **NID Guard** (template 24), then wait 20 s without moving | It stands up at its spawn 20 s after its death and fights again | NC-40 row: not exercised in the lab run. Log: `event = 'npc_respawn_recreate'` (`respawn_secs` 20) |
+| NC-U2 | At Z12, let the **T2 Z9 lethal squad** (template 1376) take you with god mode off; measure the time to death | You die in about 18 s, not faster | Not exercised in the lab run. Ability 559 now executes effect 5310 (10H/100F, RECONSTRUCTED, D-NC12 (a)), so the squad hits as the tooltip says |
+| NC-U3 | For each reference NPC (NID Guard, Jaffa Guard and Lieutenant, ScavDog, PRU), watch one full attack from 4 to 6 m | Each plays an attack animation in time with its damage number; the NID fires an SMG, the Jaffa swings the staff in reach and fires it beyond, the ScavDog bites or strikes, the PRU shows its energy weapon | Animation, muzzle effect, VFX and sound are not verified in a client. Sound is UNRESOLVED (no lab audio): report what you hear. ScavDog 1433 is RECONSTRUCTED |
+| NC-U4 | Read the combat log while the **Prisoner Retrieval Unit** and the **ScavDog** hit you | Damage lines appear; the attacker name may be blank | K26: templates 4 and 76 ship no name, known cosmetic. Do not file |
+| NC-U5 | At Z12, stand in melee reach of the Jaffa Guard, then step back to 6 m | In reach it swings (ability 710), beyond it fires (584). Effect 736 takes a 760-health character to 0 in about 10 s at 2 m | Effect 736 is RECONSTRUCTED (10H/100F); the value is high and the owner tunes it. Note the time to death |
+| NC-U6 | Walk the Debug Area gallery terrace (DA-U29 route) with `.aggro on` | 74 gallery NPCs idle; none fires Pistol Shot | Since D-NC13 the four melee humans (28, 92, 1415, 1465) and deployable 400 idle too; the 31 placeholder-inventory templates keep 592 only with a human firearm. SigNoz: no `ability_id = 592` on a creature |
+
+**Things only a human can check:** every animation, muzzle effect, VFX and sound (NC-U3); the combat-log attacker name (NC-U4); whether the Jaffa damage feels right (NC-U5).
+
+Source: [NPC combat reference ledger](../analysis/npc-combat-reference/README.md), [uat-checklist.md](../analysis/npc-combat-reference/uat-checklist.md), [w4-lab-results.md](../analysis/npc-combat-reference/w4-lab-results.md).
+
 ## Minigames
 
 The minigames campaign ([ledger](../analysis/minigames/README.md)) ported CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid to server-validated games beside Livewire, and added six reusable terminals to the Debug Area. Design: [minigame-system.md](../gameplay/minigame-system.md). The terminals: [debug-area.md](../content/debug-area.md#minigame-terminals).
