@@ -6,7 +6,7 @@ Campaign npc-combat-reference is closed (2026-11-28).
 
 - Four reference NPCs fight with their own data-driven abilities at the Debug Area Z12 range: NID Guard 24 (559, effect 5310), Praxis Jaffa 159/160 (584, 710, 736, with the staff component), ScavDog 76 (set 6 = 1433), PRU 4 (221, effect 264).
 - NPCs with no ability set idle and log a warning instead of firing Pistol Shot (592). D-NC13: only templates with a human firearm component keep 592; melee-only humans 28, 92, 1415, 1465 and deployable 400 idle; the gallery has 74 idle.
-- V1 merged as PRs #2081 to #2094; release `v2026-11-28.1` (2026-11-28) includes up to #2093; #2094 ships with the next release.
+- V1 merged as PRs #2081 to #2094; releases `v2026-11-28.1` (up to #2093) and `v2026-11-28.2` (with #2094), both 2026-11-28; this close-out ships with the next release.
 - W4 lab runs (2026-11-27, server 086fc2710) passed with notes; no 592 anywhere in the session.
 
 ## What is owed
@@ -19,7 +19,7 @@ V1.1 (Horden, Straegis Titan) and V2 (remaining roster), scoped under docs/analy
 
 ## Ops
 
-- Retire (ops, with user approval): worktree nc-10, branch NC-04-seed-trace and DB sgw_nc_04_seed_trace; the W2 and W3 packet worktrees with rm-worktree.ps1 --merged-into <PR>; nc-51 on merge. Keep nc-scope (branch npc-combat-reference/scope-v1-1-v2) until the V1.1 and V2 scoping merges.
+- Retire (ops, with user approval, rm-worktree.ps1 only): worktrees nc-10 (branch `npc-combat-reference/NC-10-wire-profile`), `npc-combat-reference/docs` and nc-51 (on merge); branch `npc-combat-reference/nc-04-seed-trace` and DB `sgw_nc_04_seed_trace` if it still exists (check with the DB list first). Keep nc-scope (branch `npc-combat-reference/scope-v1-1-v2`) until the V1.1 and V2 scoping merges.
 
 ## Links
 

@@ -6,7 +6,7 @@ Packets: [work-packets.md](work-packets.md) (rules, contract, wave 0),
 [work-packets-w1-w2.md](work-packets-w1-w2.md) and
 [work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; closed out in NC-51; owed to a human: blank PRU/ScavDog attacker name in the client combat log (known cosmetic, templates 4 and 76 ship no name, see unified-uat K26), NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
 
-**Campaign closed (2026-11-28).** V1 merged as #2081 to #2094 and shipped in release `v2026-11-28.1` (up to #2093); #2094 and this close-out ship with the next release. Decisions D-NC1 to D-NC13 are final (D-NC10 is record only). Owed to a human: [unified UAT, NPC combat reference](../../guides/unified-uat.md#npc-combat-reference). Follow-ups: V1.1 (Horden, Straegis Titan) under `docs/analysis/npc-combat-v1-1/` and V2 (the remaining roster) under `docs/analysis/npc-combat-v2/`. Board handoff text: [worknotes/board-handoff.md](worknotes/board-handoff.md).
+**Campaign closed (2026-11-28).** V1 merged as #2081 to #2094 and shipped in releases `v2026-11-28.1` (up to #2093) and `v2026-11-28.2` (with #2094); this close-out ships with the next release. Decisions D-NC1 to D-NC13 are final (D-NC10 is record only). Owed to a human: [unified UAT, NPC combat reference](../../guides/unified-uat.md#npc-combat-reference). Follow-ups: V1.1 (Horden, Straegis Titan) under `docs/analysis/npc-combat-v1-1/` and V2 (the remaining roster) under `docs/analysis/npc-combat-v2/`. Board handoff text: [worknotes/board-handoff.md](worknotes/board-handoff.md).
 
 ## Purpose
 
