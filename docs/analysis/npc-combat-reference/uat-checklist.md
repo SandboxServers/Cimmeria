@@ -1,7 +1,6 @@
 # NPC combat reference: Z12 live UAT checklist (NC-33)
 
-Status: written, not run. Nothing here is verified in the client. Every
-pass/fail cell is blank until a lab session (NC-40 to NC-44, D-NC7) fills it.
+Status: W4 run 2026-11-27, results in [w4-lab-results.md](w4-lab-results.md); presentation rows not verified. Nothing here is verified in the client.
 
 - Lab spec: `docs/guides/uat-specs/debug-area.toml`, rows `NC-U1` to `NC-U5`
   (the four reference blocks). The telemetry block is server-log and SigNoz
@@ -43,11 +42,11 @@ a difference from 10 Health is a new finding, not a presentation fault.
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
-| N1 (NC-U1) | Stand 5 m off it at 95 5.8 -860 and draw its fire with your Pistol Shot | It acquires you and fires short SMG bursts from the muzzle, with a flash or tracer and the SMG sound | `npc_ai.aggro` acquired with tag `DebugArea_Ref_NID`; the ability 559 use | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N2 (NC-U1) | Hit it so it takes cover | It steps behind the cover node and keeps firing from there | `npc_ai` decision `move_to_cover` or `stay_in_cover`; a `cover.selection` row with `picked` and the node chosen | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N3 | Read your Health after one burst | The health bar drops by the burst's damage | The damage number in the combat log: 10 H, from effect 5310 (the 559 tooltip, D-NC8, the expected value); effect 621 is unchanged and no longer used by 559, so record the observed value; a difference from 10 H is a new finding (O1 is closed by NC-25) | [ ] pass [ ] fail | RECONSTRUCTED (D-NC8) |
-| N4 (NC-U1) | Kill it | It falls, leaves loot from table 2 you can pick up | Loot roll for table 2 in the server log; no loot from the wrong table | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N5 (NC-U1) | Wait about 20 s after the kill | It stands again at spawn 14300 | `respawn_scheduled` with `respawn_secs` 20 for template 24 | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| N1 (NC-U1) | Stand 5 m off it at 95 5.8 -860 and draw its fire with your Pistol Shot | It acquires you and fires short SMG bursts from the muzzle, with a flash or tracer and the SMG sound | `npc_ai.aggro` acquired with tag `DebugArea_Ref_NID`; the ability 559 use | pass: 559 use, effect 5310, 37 casts (RECONSTRUCTED values); muzzle, flash and sound not observed | ORIGINAL CLIENT VERIFIED |
+| N2 (NC-U1) | Hit it so it takes cover | It steps behind the cover node and keeps firing from there | `npc_ai` decision `move_to_cover` or `stay_in_cover`; a `cover.selection` row with `picked` and the node chosen | not observed: cover not exercised in W4 | ORIGINAL CLIENT VERIFIED |
+| N3 | Read your Health after one burst | The health bar drops by the burst's damage | The damage number in the combat log: 10 H, from effect 5310 (the 559 tooltip, D-NC8, the expected value); effect 621 is unchanged and no longer used by 559, so record the observed value; a difference from 10 H is a new finding (O1 is closed by NC-25) | pass: 10 H from effect 5310 (RECONSTRUCTED values) | RECONSTRUCTED (D-NC8) |
+| N4 (NC-U1) | Kill it | It falls, leaves loot from table 2 you can pick up | Loot roll for table 2 in the server log; no loot from the wrong table | not run: loot not checked in W4 | ORIGINAL CLIENT VERIFIED |
+| N5 (NC-U1) | Wait about 20 s after the kill | It stands again at spawn 14300 | `respawn_scheduled` with `respawn_secs` 20 for template 24 | not run: 20 s respawn owed (NC-40) | ORIGINAL CLIENT VERIFIED |
 
 ## Block 2: Praxis Jaffa Guard (template 1380, spawn 14303) and Lieutenant (1381, spawn 14304)
 
@@ -59,10 +58,10 @@ melee damage rides effect 736 (NC-12, hand NVP rows 470 and 471).
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
-| J1 (NC-U2) | Stand 15 m off the guard at 55 5.8 -890 and target it | The serpent staff is visible in its hand, it raises it and a ranged bolt flies at you with its sound | Ability 584 used by `DebugArea_Ref_JaffaGuard` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J2 (NC-U3) | Walk to 2 m (42 5.8 -890) and wait | It swings the staff (ability 710): staff arc and sound, your Health drops | Ability 710 use; melee damage from effect 736 (NC-12) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED (swing and sound); RECONSTRUCTED (D-NC2) for the damage number |
-| J3 (NC-U3) | Walk back out to about 8 m | It stops swinging and returns to the bolt | The ability choice flips back to 584 once you are out of reach (NC-20) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J4 | Repeat J1 on the lieutenant at spawn 14304 (stand at 55 5.8 -900, 15 m off; 40 5.25 -900 is its own spawn) | The lieutenant shows the same staff and bolt, beside the guard | Ability 584 from `DebugArea_Ref_JaffaLieutenant` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| J1 (NC-U2) | Stand 15 m off the guard at 55 5.8 -890 and target it | The serpent staff is visible in its hand, it raises it and a ranged bolt flies at you with its sound | Ability 584 used by `DebugArea_Ref_JaffaGuard` | pass: 584 x30; staff and bolt visuals and sound not observed | ORIGINAL CLIENT VERIFIED |
+| J2 (NC-U3) | Walk to 2 m (42 5.8 -890) and wait | It swings the staff (ability 710): staff arc and sound, your Health drops | Ability 710 use; melee damage from effect 736 (NC-12) | pass with notes: 710 x41, 736 x117, damage high (RECONSTRUCTED); swing and sound not observed | ORIGINAL CLIENT VERIFIED (swing and sound); RECONSTRUCTED (D-NC2) for the damage number |
+| J3 (NC-U3) | Walk back out to about 8 m | It stops swinging and returns to the bolt | The ability choice flips back to 584 once you are out of reach (NC-20) | not isolated in W4 | ORIGINAL CLIENT VERIFIED |
+| J4 | Repeat J1 on the lieutenant at spawn 14304 (stand at 55 5.8 -900, 15 m off; 40 5.25 -900 is its own spawn) | The lieutenant shows the same staff and bolt, beside the guard | Ability 584 from `DebugArea_Ref_JaffaLieutenant` | not isolated in W4 | ORIGINAL CLIENT VERIFIED |
 
 ## Block 3: ScavDog (template 76, spawn 14302, set 6 = 1433)
 
@@ -72,18 +71,18 @@ here is a presentation check on a reconstructed ability.
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
-| S1 (NC-U4) | Stand 5 m off at 95 5.8 -900 for 5 s | No gun, no muzzle flash, no shot, no projectile at any point | No ability use from set 6 while you are out of reach | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| S2 (NC-U4) | Walk into reach (91.5 5.8 -900) | It bites: a creature attack animation and a creature attack sound | Ability 1433 used once you are in reach | [ ] pass [ ] fail | RECONSTRUCTED (NC-13) |
-| S3 (NC-U4) | Read your Health after the bite | The health bar drops | Melee damage from the reconstructed set | [ ] pass [ ] fail | RECONSTRUCTED (NC-13) |
-| S4 (NC-U4) | Hit it, then kill it | It reacts to the hit and falls when killed | Death and respawn in 20 s | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| S1 (NC-U4) | Stand 5 m off at 95 5.8 -900 for 5 s | No gun, no muzzle flash, no shot, no projectile at any point | No ability use from set 6 while you are out of reach | pass: no 592 | ORIGINAL CLIENT VERIFIED |
+| S2 (NC-U4) | Walk into reach (91.5 5.8 -900) | It bites: a creature attack animation and a creature attack sound | Ability 1433 used once you are in reach | pass: 1433, 180 rows; bite animation and sound not observed | RECONSTRUCTED (NC-13) |
+| S3 (NC-U4) | Read your Health after the bite | The health bar drops | Melee damage from the reconstructed set | pass: 1433 damage, 180 rows (RECONSTRUCTED set) | RECONSTRUCTED (NC-13) |
+| S4 (NC-U4) | Hit it, then kill it | It reacts to the hit and falls when killed | Death and respawn in 20 s | not run: 20 s respawn owed; reaction not observed | ORIGINAL CLIENT VERIFIED |
 
 ## Block 4: Prisoner Retrieval Unit (template 4, spawn 14301, drone ability 221)
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
-| P1 (NC-U5) | Stand 5 m off at 65 5.8 -850 and target it | An energy beam or projectile leaves its emitter toward you, with its sound | Ability 221 used by `DebugArea_Ref_PRU` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| P2 (NC-U5) | Read your Health after the shock | The health bar drops | The shock damage (NC-14 pins the defs) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| P3 (NC-U5) | Watch the drone | The drone moves to its firing position and back | The drone's ability state in the log | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| P1 (NC-U5) | Stand 5 m off at 65 5.8 -850 and target it | An energy beam or projectile leaves its emitter toward you, with its sound | Ability 221 used by `DebugArea_Ref_PRU` | pass: ability 221, 23 rows; beam and sound not observed | ORIGINAL CLIENT VERIFIED |
+| P2 (NC-U5) | Read your Health after the shock | The health bar drops | The shock damage (NC-14 pins the defs) | pass: effect 264 shock, 23 rows | ORIGINAL CLIENT VERIFIED |
+| P3 (NC-U5) | Watch the drone | The drone moves to its firing position and back | The drone's ability state in the log | not observed: drone movement is visual only | ORIGINAL CLIENT VERIFIED |
 
 ## Block 5: Telemetry (no client driving)
 
@@ -92,9 +91,9 @@ these checks.
 
 | Row | Check | Expected | Pass / fail |
 |---|---|---|---|
-| T1 | No `combat_profile_placeholder` or `combat_profile_unresolved` for templates 24, 4, 76, 1380 or 1381 | Zero rows | [ ] pass [ ] fail |
-| T2 | No `effect_inert` for effects 736 or 1717 | Zero rows (NC-12 closed both) | [ ] pass [ ] fail |
-| T3 | Every `combat_profile_*` line carries its template name next to the id (R8) | The name and the id appear together | [ ] pass [ ] fail |
+| T1 | No `combat_profile_placeholder` or `combat_profile_unresolved` for templates 24, 76, 4, 159 or 160 | Zero rows | pass: 0 rows (templates 24, 76, 4, 159, 160) |
+| T2 | No `effect_inert` for effects 736 or 1717 | Zero rows (NC-12 closed both) | not run: Z9 squad owed |
+| T3 | Every `combat_profile_*` line carries its template name next to the id (R8) | The name and the id appear together | pass: 0 rows for 592 |
 
 ## Owner decisions that touch this checklist
 
@@ -102,7 +101,7 @@ these checks.
   their look. Lineup rows follow `docs/content/debug-area.md`.
 - D-NC6 (`weapon_item_id` informational): the NID's `weapon_item_id` 21 has no
   server consumer, so no row checks it.
-- D-NC7 (lab approved in principle): this checklist is written, not run. The
+- D-NC7 (lab approved in principle): this checklist was run in W4 (2026-11-27). The
   lab sessions are NC-40 to NC-44 and each needs a fresh go-ahead.
 - D-NC8 (follow the 559 tooltip, RECONSTRUCTED): N3 expects the tooltip's
   10 Health per burst, which effect 5310 executes (NC-25, RECONSTRUCTED), and

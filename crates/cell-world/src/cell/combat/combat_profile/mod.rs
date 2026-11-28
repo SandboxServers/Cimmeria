@@ -2,14 +2,16 @@
 //! and whether that came from an explicit ability set or from a placeholder.
 //!
 //! `NPC_DEFAULT_ABILITY` (592 Pistol Shot) is a Giza/Python placeholder, not
-//! Cimmeria behaviour. Spawning applies it when a template has no ability set
-//! (`spawn.rs:314-317`), and the AI applies it when an NPC knows no ability.
-//! It is a human firearm, so it is wrong for creatures. The resolver makes
-//! that choice in one place and reports it.
+//! Cimmeria behaviour. Spawning applies it only under `PLACEHOLDER_POLICY`:
+//! `Legacy` gives every set-less template 592; `RequireWeaponEvidence`
+//! (production, NC-30) gives it to templates with a human firearm component.
+//! It is a human firearm, so it is wrong for creatures and for melee humans.
+//! The resolver makes that choice in one place and reports it.
 //!
 //! This module is pure. [`PLACEHOLDER_POLICY`] is `RequireWeaponEvidence`
-//! (decision D-NC1, NC-30): a template with no ability set gets 592 only
-//! when it carries a `WP-Human.*` weapon component.
+//! (decision D-NC1, NC-30; narrowed to firearms by D-NC13, NC-50b): a
+//! template with no ability set gets 592 only when it carries a component
+//! from [`HUMAN_FIREARM_PREFIXES`].
 
 use super::aggression::NPC_DEFAULT_ABILITY; // 592 Pistol Shot
 
@@ -21,19 +23,30 @@ use std::sync::{LazyLock, Mutex};
 pub enum PlaceholderPolicy {
     /// Keep the 592 Pistol Shot placeholder for every NPC with no set.
     Legacy,
-    /// Give 592 only to a human with a `WP-Human.*` weapon component.
+    /// Give 592 only to a human with a human firearm weapon component.
     RequireWeaponEvidence,
 }
 
 /// The policy production runs. D-NC1 (decided 2026-11-27) flipped it from
-/// `Legacy` to `RequireWeaponEvidence` under NC-30.
+/// `Legacy` to `RequireWeaponEvidence` under NC-30. D-NC13 (2026-11-28)
+/// narrowed the firearm test to [`HUMAN_FIREARM_PREFIXES`] under NC-50b.
 pub const PLACEHOLDER_POLICY: PlaceholderPolicy = PlaceholderPolicy::RequireWeaponEvidence;
 
 /// A component whose package starts with this is a weapon mesh.
 pub const WEAPON_COMPONENT_PREFIX: &str = "WP-";
 /// 592 Pistol Shot is a human firearm: under RequireWeaponEvidence only a
-/// component starting with this may earn it.
-pub const HUMAN_FIREARM_PREFIX: &str = "WP-Human.";
+/// component starting with one of these may earn it. The list is a
+/// whitelist of firearm classes, so a melee human (`WP-Human.WP_HandToHand_1A`,
+/// templates 28, 92, 1415, 1465) and any other `WP-Human.*` part earn nothing.
+pub const HUMAN_FIREARM_PREFIXES: &[&str] = &[
+    "WP-Human.WP_Pistol_",
+    "WP-Human.WP_SMG_",
+    "WP-Human.WP_AR_",
+    "WP-Human.WP_LMG_",
+    "WP-Human.WP_HMG_",
+    "WP-Human.WP_Rifle_",
+    "WP-Human.WP_Shotgun_",
+];
 
 /// Where an NPC's abilities came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,10 +105,11 @@ pub fn resolve_npc_combat_profile(
     }
     let placeholder = match policy {
         PlaceholderPolicy::Legacy => true,
-        PlaceholderPolicy::RequireWeaponEvidence => components
-            .unwrap_or(&[])
-            .iter()
-            .any(|c| c.starts_with(HUMAN_FIREARM_PREFIX)),
+        PlaceholderPolicy::RequireWeaponEvidence => components.unwrap_or(&[]).iter().any(|c| {
+            HUMAN_FIREARM_PREFIXES
+                .iter()
+                .any(|prefix| c.starts_with(prefix))
+        }),
     };
     let (abilities, source) = if placeholder {
         (

@@ -381,13 +381,13 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ## NPC Ability Bucket and Selection
 
-`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/cell-catalog/src/cell/spawner/npcs.rs`](../../crates/cell-catalog/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/cell-catalog/src/cell/spawner/npcs.rs`](../../crates/cell-catalog/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path grants `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) only to a template with a human firearm component (`HUMAN_FIREARM_PREFIXES`, D-NC1 and D-NC13); any other NPC knows no ability, holds fire and logs `combat_profile_unresolved` ([NPC combat references](npc-combat-references.md)).
 
 Examples:
 
 - Template 4 (Prisoner retrieval unit) → `ability_set_id = 2` → `[221]` Energy Shock — the Castle_CellBlock drone fires its zat-shape projectile instead of a pistol.
 - Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
-- Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
+- Templates without an `ability_set_id` (most props, statics) → know no ability and hold fire, unless the template carries a human firearm component (then `[592]`). `class_id` filtering also keeps the AI tick from firing on non-mobs.
 
 At fight-tick time, [`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
 

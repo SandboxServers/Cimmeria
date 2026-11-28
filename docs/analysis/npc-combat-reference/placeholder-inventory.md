@@ -9,7 +9,9 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 
 - Entity templates in the seeds: 566. With a NULL `ability_set_id`: 506.
   Of those, 36 carry a `WP-Human.*` component and would keep 592 under
-  `RequireWeaponEvidence`; the other 470 would hold fire.
+  `RequireWeaponEvidence` (D-NC1). After NC-50b (D-NC13) only the firearm
+  whitelist keeps it: 31 do; rows 28, 92, 400, 1415 and 1465 now hold fire.
+  The other 475 hold fire (470 with no `WP-Human.*` component, plus the 5 rows above).
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
 - Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 42 candidates (6 cell-world, 5 cell-combat, 31 other). Of these, 3 need an NC-21 fix (2 cell-world, 1 other), 6 are unaffected and 33 need no fix.
@@ -25,7 +27,8 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
   `vendor` when any buy, sell, repair or recharge list is set; `trainer` when
   `trainer_ability_list_id` is set. A scripted flag has no field in the seed, so it is not shown.
 - Verdict: `keeps 592` when a component starts with `WP-Human.`, else `holds fire`
-  (the C1 `RequireWeaponEvidence` rule).
+  (the C1 `RequireWeaponEvidence` rule). NC-50b (D-NC13) narrows this to the
+  firearm whitelist `HUMAN_FIREARM_PREFIXES`; the rows edited for NC-50b say so.
 - Callers and fallback tests: a scanner that strips comments and literals, then matches
   brace-delimited fn and `cfg(test)` module bodies. It is a heuristic, not a compile. Counts are taken at origin/main d780348e4 plus NC-10's tests.
 - Evidence classes (README § Evidence classifications): the template rows, components, factions and spawn counts are EARLIEST LEGACY DATA (the `db/resources` seeds). The caller and test lists, and what `spawn_npc` adds, are CURRENT CIMMERIA IMPLEMENTATION (code, heuristic scan). The `keeps 592` / `holds fire` verdict is RECONSTRUCTED (C1 rule applied to seed components; a prediction for NC-30). The `scripted` flag is UNRESOLVED (no seed column). No row is ORIGINAL CLIENT VERIFIED or STRONGLY INFERRED.
@@ -48,7 +51,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 | 23 | Loot debug item | other | none | 1 | mob | 4 | - | none | holds fire |
 | 25 | Interaction Debug NPC - DO NOT USE | Human | none | 1 | mob | 0 | vendor, trainer | none | holds fire |
 | 26 | TestAvatar | Human | none | - | mob | 0 | - | none | holds fire |
-| 28 | test avatar set - DO NOT USE | Human | WP-Human.WP_HandToHand_1A | - | being | 0 | - | none | keeps 592 |
+| 28 | test avatar set - DO NOT USE | Human | WP-Human.WP_HandToHand_1A | - | being | 0 | - | none | holds fire (NC-50b) |
 | 29 | General Hammond | Human | none | 1 | mob | 0 | - | w58 x1 | holds fire |
 | 30 | Teal'c | Jaffa | none | 1 | mob | 0 | - | w58 x1 | holds fire |
 | 31 | Airman | Human | none | 1 | mob | 0 | - | w58 x2 | holds fire |
@@ -112,7 +115,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 | 89 | Eagle Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
 | 90 | Falcon Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
 | 91 | Horse Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
-| 92 | Hyena Jaffa | Jaffa | WP-Human.WP_HandToHand_1A | 10 | mob | 0 | - | w1300 x1 | keeps 592 |
+| 92 | Hyena Jaffa | Jaffa | WP-Human.WP_HandToHand_1A | 10 | mob | 0 | - | w1300 x1 | holds fire (NC-50b) |
 | 93 | Jackal Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
 | 94 | Mayan Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
 | 95 | Morrigan Jaffa | Jaffa | none | 10 | mob | 0 | - | w1300 x1 | holds fire |
@@ -219,7 +222,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 | 371 | Debug Hub - Team Banker | Human | none | 1 | mob | 0 | interactive | w12 x1, w1300 x1 | holds fire |
 | 372 | Debug Hub - Command Banker | Human | none | 1 | mob | 0 | interactive | w12 x1, w1300 x1 | holds fire |
 | 390 | Debug Hub - Gate Mail Clerk | Human | none | 1 | mob | 0 | interactive | w12 x1, w1300 x1 | holds fire |
-| 400 | Deployable: Microwave Emitter | other | WP-Human.Dp_Standard100 | 1 | being | 0 | - | none | keeps 592 |
+| 400 | Deployable: Microwave Emitter | other | WP-Human.Dp_Standard100 | 1 | being | 0 | - | none | holds fire (NC-50b) |
 | 410 | Castle supply chest | other | none | - | spawnable | 0 | interactive | w8 x1 | holds fire |
 | 411 | SGC_W1 Carter desk SMG | other | none | - | spawnable | 4 | - | w58 x1 | holds fire |
 | 412 | Castle_MedDispenser | other | none | - | being | 0 | - | w8 x1 | holds fire |
@@ -280,7 +283,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 | 1412 | DebugArea Visual Lineup - NID Guard | Human | WP-Human.WP_SMG_1A | 1 | mob | 0 | - | w1300 x1 | keeps 592 |
 | 1413 | DebugArea Visual Lineup - Interaction Debug NPC - DO NOT USE | Human | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1414 | DebugArea Visual Lineup - TestAvatar | Human | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
-| 1415 | DebugArea Visual Lineup - test avatar set - DO NOT USE | Human | WP-Human.WP_HandToHand_1A | 1 | mob | 0 | - | w1300 x1 | keeps 592 |
+| 1415 | DebugArea Visual Lineup - test avatar set - DO NOT USE | Human | WP-Human.WP_HandToHand_1A | 1 | mob | 0 | - | w1300 x1 | holds fire (NC-50b) |
 | 1416 | DebugArea Visual Lineup - General Hammond | Human | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1417 | DebugArea Visual Lineup - Airman | Human | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1418 | DebugArea Visual Lineup - Mr Woolsey | Human | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
@@ -330,7 +333,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
 | 1462 | DebugArea Visual Lineup - Eagle Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1463 | DebugArea Visual Lineup - Falcon Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1464 | DebugArea Visual Lineup - Horse Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
-| 1465 | DebugArea Visual Lineup - Hyena Jaffa | Jaffa | WP-Human.WP_HandToHand_1A | 1 | mob | 0 | - | w1300 x1 | keeps 592 |
+| 1465 | DebugArea Visual Lineup - Hyena Jaffa | Jaffa | WP-Human.WP_HandToHand_1A | 1 | mob | 0 | - | w1300 x1 | holds fire (NC-50b) |
 | 1466 | DebugArea Visual Lineup - Jackal Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1467 | DebugArea Visual Lineup - Mayan Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |
 | 1468 | DebugArea Visual Lineup - Morrigan Jaffa | Jaffa | none | 1 | mob | 0 | - | w1300 x1 | holds fire |

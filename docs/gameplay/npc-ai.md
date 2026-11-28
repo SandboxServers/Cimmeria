@@ -277,39 +277,8 @@ This let scripted events change a mob's stance for a while (for example, a frien
 
 ## Ability Selection (Combat AI)
 
-### Combat profile and the Pistol Shot placeholder
-
-`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves
-which abilities a spawned NPC gets. Spawning and the AI share the rule: an
-explicit `ability_ids` set always wins, and an empty set takes the placeholder
-that the policy allows.
-
-| `ability_ids` | Policy | Components | Abilities | Source |
-|---|---|---|---|---|
-| non-empty | any | any | the set, in order | `ExplicitSet` |
-| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
-| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |
-| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
-
-592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
-(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
-firearm. Production runs `PLACEHOLDER_POLICY = RequireWeaponEvidence` (NC-30,
-decision D-NC1), so only a human with a `WP-Human.*` component keeps 592, and
-an NPC with no ability set and no weapon evidence idles and warns.
-
-Two diagnostics log on target `npc.combat_profile`, at most once per template
-id per process:
-
-- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
-  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
-  (or `none`), `ability_id`, `ability_name`.
-- `combat_profile_unresolved` (WARN): the template has no ability set and no
-  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
-
-An explicit set logs nothing. In the AI, an NPC that knows no ability gets
-no fallback: `placeholder_ability(policy)` returns 592 under `Legacy` and
-`None` under `RequireWeaponEvidence`, so the NPC idles (D-NC1). The 592 for a
-`WP-Human.*` template comes from spawn resolution, not from the AI.
+The combat profile (`ability_ids`, the placeholder policy and the `combat_profile_*`
+diagnostics) is documented in [NPC combat reference pipelines](npc-combat-references.md#combat-profile-table-and-diagnostics).
 
 ### Classification
 
@@ -361,28 +330,10 @@ weighting/rand here.` directly above that line, so lowest-id is a Cimmeria
 convention rather than a divergence from a contract. The practical
 consequence for a content author is that **the lowest-id member of an
 ability set is the NPC's primary attack** and the rest are cooldown
-fallbacks. (Inside `NPC_MELEE_RANGE` a non-pet NPC takes its off-cooldown melee ability first; see "Melee first inside reach" below.)
+fallbacks. The reach gate and the melee-first rule are described in [NPC combat reference pipelines](npc-combat-references.md#shared-stages).
 
-**A distance gate the original never had.** `classifyHostileAbility` carries
-the literal comment `# TODO: Check distance, LOS` above its
-`return ABILITY_Usable`. `choose_npc_ability_within_reach` is that TODO:
-
-- An `is_ranged = false` ability is only selectable when the target is
-  inside `NPC_MELEE_RANGE` (3 m). Without the gate a melee auto-attack
-  resolves to the 30 m ranged default, because `abilities.max_range` is the
-  `0` "use the server default" sentinel on every auto-attack in the seed and
-  `is_ranged` is otherwise read only by `calculate_qr` to pick the
-  accuracy/defence branch. The visible defect is an NPC playing a staff or
-  ribbon *swing* at a target thirty metres away.
-- When nothing is in reach it falls back to the unfiltered pick rather than
-  returning `None`. `None` is the caller's "all cooling, hold fire" signal,
-  so returning it would freeze a melee-only NPC at distance. Handing back
-  the out-of-reach ability lets `ability_ranges` report its real 3 m
-  `max_range`, and the fight tick's existing out-of-range arm then does the
-  right thing: a mobile NPC chases and swings once it arrives, a stationary
-  one lands in `stationary_holds` and turns to face its target.
-
-**Melee first inside reach (NC-20).** Inside `NPC_MELEE_RANGE` an NPC that is not a pet takes an off-cooldown melee ability before any ranged one, whatever the ids. A Jaffa at 2 m therefore swings the staff melee (710) rather than 584, and a Goa'uld (set 5) at 2 m swings 711. Beyond 3 m the ranged half is picked as before. Pets (D-NC4) keep the lowest-id walk.
+**Reach gate and melee-first (NC-20, D-NC4).** The distance gate and the melee-first rule inside
+`NPC_MELEE_RANGE` are described with the selector in [npc-combat-references.md](npc-combat-references.md#shared-stages).
 
 `NPC_MELEE_RANGE` is derived from the weapon table rather than invented.
 `resources.items` carries `min_melee_range` / `max_melee_range` alongside

@@ -15,8 +15,10 @@
 -- mutually hostile with 10, so a faction-3 "friendly" would start NPC-vs-NPC
 -- fights with the hostile pen. That is DA-04's arena.
 --
--- Level 1 throughout (250 HP). No ability set: every one falls back to 592
--- Pistol Shot. Respawn timers are on the spawn rows.
+-- Level 1 throughout (250 HP). No ability set: every one idles and logs
+-- combat_profile_unresolved, except a template with a human firearm component
+-- (`WP-Human.WP_SMG_` / `WP_Pistol_`, D-NC13), which falls back to 592 Pistol
+-- Shot. Melee humans (`WP_HandToHand_1A`) idle. Respawn timers are on the spawn rows.
 --
 -- 1341 wanders (radius 8 u, dwell 3-8 s). 1342 leashes at 15 u (+5 u band)
 -- and aggroes at 12 u. 1343 aggroes at 6 u and assists at 10 u, so a tester

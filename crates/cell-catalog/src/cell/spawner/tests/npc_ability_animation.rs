@@ -8,7 +8,7 @@
 //! animation on any client. 1851 of the 1886 seeded abilities have no event
 //! set, so the check is scoped to what NPCs actually fire: the effective
 //! abilities (the template's set, or `NPC_DEFAULT_ABILITY` when it has none and
-//! carries a `WP-Human.*` component (D-NC1)) of every template that is spawned
+//! carries a human firearm component (D-NC1)) of every template that is spawned
 //! hostile or carries an ability set.
 //!
 //! The third test is the §14 weapon check: a hostile template that names a
@@ -31,8 +31,20 @@ use crate::test_support::require_db_or_skip;
 /// which this crate cannot depend on (cell-world depends on cell-catalog).
 const NPC_DEFAULT_ABILITY: i32 = 592;
 
+/// Mirrors `cimmeria_cell_world::cell::combat::combat_profile::HUMAN_FIREARM_PREFIXES`
+/// (D-NC13); keep the two in step.
+const HUMAN_FIREARM_PREFIXES: &[&str] = &[
+    "WP-Human.WP_Pistol_",
+    "WP-Human.WP_SMG_",
+    "WP-Human.WP_AR_",
+    "WP-Human.WP_LMG_",
+    "WP-Human.WP_HMG_",
+    "WP-Human.WP_Rifle_",
+    "WP-Human.WP_Shotgun_",
+];
+
 /// The abilities a template fires at spawn. The template's own set wins; an
-/// empty set gets the placeholder only with a `WP-Human.*` component, as the
+/// empty set gets the placeholder only with a human firearm component, as the
 /// spawn rule in cell-world's `combat_profile` gives it (D-NC1).
 fn effective_abilities(proto: &SpawnRecord) -> Vec<i32> {
     if !proto.ability_ids.is_empty() {
@@ -42,7 +54,7 @@ fn effective_abilities(proto: &SpawnRecord) -> Vec<i32> {
         .components
         .iter()
         .flatten()
-        .any(|c| c.starts_with("WP-Human."))
+        .any(|c| HUMAN_FIREARM_PREFIXES.iter().any(|p| c.starts_with(p)))
     {
         vec![NPC_DEFAULT_ABILITY]
     } else {

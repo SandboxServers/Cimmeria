@@ -4,7 +4,7 @@ Ledger for "SGW Reconstruction Campaign 01: original NPC combat, weapons,
 creature attacks and animation restoration" (brief from Lomiada, 2026-11).
 Packets: [work-packets.md](work-packets.md) (rules, contract, wave 0),
 [work-packets-w1-w2.md](work-packets-w1-w2.md) and
-[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; open: blank PRU/ScavDog attacker name in the client combat log, NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
+[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; open: blank PRU/ScavDog attacker name in the client combat log (known cosmetic, templates 4 and 76 ship no name, see unified-uat K26), NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
 
 ## Purpose
 
@@ -134,7 +134,8 @@ says yes. NC-05 upgrades or contradicts it later.
 
 | Id | Question | Recommendation | Status |
 |---|---|---|---|
-| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | Decided (owner, 2026-11-27): an NPC with no ability set idles and logs a warning, with no 592 fallback. NC-30 flipped the policy (code keeps 592 only for a template with a `WP-Human.*` component) |
+| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | Decided (owner, 2026-11-27): an NPC with no ability set idles and logs a warning, with no 592 fallback. NC-30 flipped the policy (code kept 592 only for a template with a `WP-Human.*` component; D-NC13 then narrowed that to human firearms) |
+| D-NC13 | Which `WP-Human.*` components earn 592? | Narrow the D-NC1 test to human firearms: a whitelist `HUMAN_FIREARM_PREFIXES` (pistol, SMG, AR, LMG, HMG, rifle, shotgun). A melee human (`WP_HandToHand_1A`, templates 28, 92, 1415, 1465) and a deployable part idle | Decided (owner): NC-50b narrows the test. Only firearm templates keep 592; the four melee humans and template 400 now hold fire (the gallery count is 74 idle) |
 | D-NC2 | How to give 736 and 1717 their damage | Hand NVP rows 470-473 plus `MeleePhysicalDamage`, the #493 precedent (effect 656), labelled RECONSTRUCTED from each effect's own description. Do not widen the generator's player-only scope | Decided (owner, 2026-11-27): derive from the ability text, RECONSTRUCTED. Merged in #2089 |
 | D-NC3 | Staff on the real 159/160 | Clones (1380/1381) in the Debug Area now. Add `WP-Jaffa.WP_Staff_Plasma_4A` to 159/160 in place after the Jaffa reference passes, with lineup rows if their look changes. Keep their faction 1 | Decided (owner, 2026-11-27): yes, staff on 159/160, RECONSTRUCTED. NC-22 implements |
 | D-NC4 | Melee preference in reach | NPCs only: within `NPC_MELEE_RANGE`, an off-cooldown melee ability wins over ranged. Pets keep lowest-id | Decided (owner, 2026-11-27): yes, NPCs only |
@@ -181,8 +182,8 @@ says yes. NC-05 upgrades or contradicts it later.
 | NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
 | NC-43 | 4 | orchestrator + lab-driver | Live UAT: PRU at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
 | NC-44 | 4 | orchestrator | Telemetry check: diagnostics and no 592 on creatures | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
-| NC-32 | 4 | documentation-writer | NPC combat reference docs page (no lab) | NC-30, NC-31 | BlockedDependency |
-| NC-50 | 5 | packet-reviewer loop | Campaign review | W4 | BlockedDependency |
+| NC-32 | 4 | documentation-writer | NPC combat reference docs page (no lab) | NC-30, NC-31 | Integrated (#2092) |
+| NC-50 | 5 | packet-reviewer loop | Campaign review | W4 | In progress |
 | NC-51 | 5 | documentation-writer | Close-out: status docs, unified-uat, retire | NC-50 | BlockedDependency |
 
 ## Dependency graph

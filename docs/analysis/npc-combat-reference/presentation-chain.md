@@ -121,7 +121,7 @@ effects `{736}`. It sits in set 4 beside 584.
 | 300 | ability source | 2959 | 1002 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2981, sequences_nvp.sql:3647 |
 | 300 | | 346 | 1001 (Ability_End) | `KIS-SA_Melee_Source` | - | sequences.sql:3169 |
 
-Effect 736 `effects.sql:7522`: name `Strike Damage`, desc `-100F -10H`,
+Effect 736 `effects.sql:7524`: name `Strike Damage`, desc `-100F -10H`,
 **no script**, `event_set_id` 301
 (`Generic melee weapon target`), **no NVP rows**.
 
@@ -150,7 +150,7 @@ The sequences are the same set 300 as the Jaffa melee ability 710
 (table above). Only the link ability to set is RECONSTRUCTED (PR #822 Tier 3), from
 animation-links.md:74.
 
-Effect 1717 `effects.sql:3012`: name `Strike Damage`, desc `-125F -15H`,
+Effect 1717 `effects.sql:3013`: name `Strike Damage`, desc `-125F -15H`,
 **no script**, `event_set_id` 301, **no NVP rows**. Its target sequences are
 the set 301 rows above (348-352). Effect and ability sets differ: the
 ability is on 300 and the effect on 301, which is the source/target pair.
@@ -179,7 +179,7 @@ hold it.
 | 802 | ability source (`Energy shock ability source`) | 1866 | 1001 (Ability_End) | `KIS-SA_Beam_Source` | `beamWeapon=EnergyShock` | sequences.sql:1269, sequences_nvp.sql:1139 |
 | 802 | | 2894 | 1002 | `KIS-SA_Effect_Source` | `sfx1=abil_hum/statecast/interupt` | sequences.sql:2851, sequences_nvp.sql:3515 |
 
-Effect 264 `effects.sql:7813`: name `Energy Blast Damage`, desc `Energy Blast Effect`, script
+Effect 264 `effects.sql:7815`: name `Energy Blast Damage`, desc `Energy Blast Effect`, script
 `RangedEnergyDamage`, `event_set_id` 803 (`Energy shock effect target`).
 NVPs `HealthDamage` 16 and `FocusDamage` 80 (`effect_nvps.sql:33, 35`).
 

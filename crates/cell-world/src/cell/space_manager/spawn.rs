@@ -313,8 +313,8 @@ impl SpaceManager {
 
         // Per-template ability bucket. `combat_profile` owns the rule: an
         // explicit `ability_ids` set is kept as-is. An empty one takes 592
-        // only under `RequireWeaponEvidence` with a `WP-Human.*` component
-        // (D-NC1); otherwise the NPC holds fire. The choice is reported once
+        // only under `RequireWeaponEvidence` with a human firearm component
+        // (D-NC1, narrowed by D-NC13); otherwise the NPC holds fire. The choice is reported once
         // per template (`npc.combat_profile` rows).
         use super::super::combat::combat_profile::{
             report_profile, resolve_npc_combat_profile, PLACEHOLDER_POLICY,

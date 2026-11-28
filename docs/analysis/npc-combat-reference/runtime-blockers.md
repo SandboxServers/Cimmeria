@@ -51,7 +51,7 @@ packet is a sketch for the architect, not a spec.
   `RangedEnergyDamage` gives `DT_ENERGY`) is used only for DoT pulses
   (`effects/pulsing/pulse.rs:251`), never on a direct hit.
 - So 221 Energy Shock (effect 264, script `RangedEnergyDamage`,
-  `db/resources/Effects/Seed/effects.sql:7813`) lands as physical: the physical
+  `db/resources/Effects/Seed/effects.sql:7815`) lands as physical: the physical
   absorb pools drain instead of the energy ones, and the client gets a physical
   `damage_code`. Script damage takes no armour factor
   (`effect_scripts.rs:206-266` only runs the shield absorb), so AF is not part
@@ -121,8 +121,8 @@ packet is a sketch for the architect, not a spec.
 
 ## 6. `effect_inert` for 736 and 1717: confirmed (static)
 
-- Effect 736 (ability 710, `effects.sql:7522`) and effect 1717 (ability 1433,
-  `effects.sql:3012`) have `script_name` NULL, and `effect_nvps.sql` has no
+- Effect 736 (ability 710, `effects.sql:7524`) and effect 1717 (ability 1433,
+  `effects.sql:3013`) have `script_name` NULL, and `effect_nvps.sql` has no
   row for either id.
 - With no script and no NVP damage the plan path is `PATH_SKIPPED` /
   `REASON_NO_SCRIPT` (`abilities/effect_plan.rs:252`), which calls `warn_inert`

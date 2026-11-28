@@ -35,16 +35,63 @@ Reconstructed values stay RECONSTRUCTED until a client record names them.
 - **Resolver.** `resolve_npc_combat_profile`
   (`crates/cell-world/src/cell/combat/combat_profile/mod.rs`) turns a template
   into a profile. `PLACEHOLDER_POLICY` is `RequireWeaponEvidence` (NC-30,
-  D-NC1): a template with no set earns Pistol Shot (592) only through a
-  `WP-Human.` component. Every other set-less template idles and logs
+  D-NC1, narrowed by D-NC13 in NC-50b): a template with no set earns Pistol
+  Shot (592) only through a human firearm component, one whose name starts
+  with a `HUMAN_FIREARM_PREFIXES` entry (`WP-Human.WP_Pistol_`, `WP_SMG_`,
+  `WP_AR_`, `WP_LMG_`, `WP_HMG_`, `WP_Rifle_`, `WP_Shotgun_`). A melee human
+  (`WP-Human.WP_HandToHand_1A`) or a deployable part earns nothing. Every
+  other set-less template idles and logs
   `combat_profile_unresolved`. A template granted 592 logs
   `combat_profile_placeholder` instead. Both rows carry the template name
   next to the id.
-- **Selection.** `choose_npc_ability` walks the set in ascending id order.
-  Inside `NPC_MELEE_RANGE` an off-cooldown melee ability goes first (NC-20).
+- **Selection.** `choose_npc_ability` walks the set in ascending id order and
+  takes the first off-cooldown ability, so the lowest id is the primary attack
+  and the rest are fallbacks (`ability_select.rs`). The Rust selector adds a
+  reach gate the original never had. A melee ability (`is_ranged = false`) is
+  selectable only inside `NPC_MELEE_RANGE` (3 m): this is the TODO above
+  `classifyHostileAbility`'s `return ABILITY_Usable`, implemented as
+  `choose_npc_ability_within_reach`. Without it a melee auto-attack resolves
+  to the 30 m ranged default, because `abilities.max_range` is the `0`
+  sentinel on every auto-attack. When nothing is in reach the unfiltered pick is
+  returned rather than `None`, so a melee-only NPC chases and swings instead of
+  freezing. Inside reach an off-cooldown melee ability goes first (NC-20): a Jaffa
+  at 2 m swings 710, not 584, and a Goa'uld (set 5) at 2 m swings 711. Pets (D-NC4)
+  keep the lowest-id walk.
 - **Presentation.** `abilities.event_set_id` is the server's whole lever; the
   client has no ability-keyed lookup. See the
   [presentation chain](../analysis/npc-combat-reference/presentation-chain.md).
+
+### Combat profile table and diagnostics
+
+`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves
+which abilities a spawned NPC gets. Spawning and the AI share the rule: an
+explicit `ability_ids` set always wins, and an empty set takes the placeholder
+that the policy allows.
+
+| `ability_ids` | Policy | Components | Abilities | Source |
+|---|---|---|---|---|
+| non-empty | any | any | the set, in order | `ExplicitSet` |
+| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | a human firearm component (`HUMAN_FIREARM_PREFIXES`) | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
+
+592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
+(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
+firearm. The policy rule in the Resolver bullet above decides who keeps it.
+
+Two diagnostics log on target `npc.combat_profile`, at most once per template
+id per process:
+
+- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
+  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
+  (or `none`), `ability_id`, `ability_name`.
+- `combat_profile_unresolved` (WARN): the template has no ability set and no
+  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
+
+An explicit set logs nothing. In the AI, an NPC that knows no ability gets
+no fallback: `placeholder_ability(policy)` returns 592 under `Legacy` and
+`None` under `RequireWeaponEvidence`, so the NPC idles (D-NC1). The 592 for a
+firearm template comes from spawn resolution, not from the AI.
 
 ## The four pipelines
 
@@ -93,15 +140,7 @@ follows these steps for each roster NPC.
 
 ## Not yet verified in the client
 
-Nothing on this page is verified in the live client. Lab runs are separate
-and attest later. Every row of the
-[Z12 checklist](../analysis/npc-combat-reference/uat-checklist.md) is pending:
-
-- NID: N1 to N5 (fire, cover, the 10 Health burst, loot, respawn).
-- Jaffa: J1 to J4 (bolt, staff swing, return to the bolt, the lieutenant).
-- ScavDog: S1 to S4 (no gun, the bite, its damage, death).
-- PRU: P1 to P3 (the beam, the shock, the drone).
-- Telemetry: T1 to T3.
+W4 lab runs (2026-11-27, [w4-lab-results.md](../analysis/npc-combat-reference/w4-lab-results.md)) confirmed the server side: NID 559/5310, PRU 221/264, ScavDog 1433, Jaffa 584/710/736, and no ability 592 row in the session. Not verified: animation, muzzle effects, VFX and sound (the lab driver reads chat and the combat log only); the NID 20 s respawn; the T2 Z9 squad. Nothing here is ORIGINAL CLIENT VERIFIED from a visual read.
 
 Rows that rest on RECONSTRUCTED values (N3, the J2 damage number, S2, S3)
 stay RECONSTRUCTED even when they pass.
