@@ -4,12 +4,12 @@ Ledger: [README.md](README.md). This file holds the dispatch rules, the rules ev
 
 - Campaign folder: `docs/analysis/npc-combat-v1-1/`.
 - Branch prefix: `npc-combat-v1-1/`.
-- Worktree names: `nt-<id>` (for example `nt-02`, `nt-12a`).
-- Integration branch for wave 2: `npc-combat-v1-1/nt-w2`, worktree `nt-w2`.
+- Worktree names: `nx-<id>` (for example `nx-02`, `nx-12a`).
+- Integration branch for wave 2: `npc-combat-v1-1/nx-w2`, worktree `nx-w2`.
 
 ## Dispatch rules
 
-- `ops` makes one worktree and one test database (`sgw_<worktree>`) per packet: `pwsh tools/build-lane/mk-worktree.ps1 npc-combat-v1-1/<NT-xx>-<slug> nt-<xx>`.
+- `ops` makes one worktree and one test database (`sgw_<worktree>`) per packet: `pwsh tools/build-lane/mk-worktree.ps1 npc-combat-v1-1/<NX-xx>-<slug> nx-<xx>`.
 - Every packet is `Host: windows`. A worker on another platform returns `blocked`.
 - The report path is `<worktree>\.claude\reports\npc-combat-v1-1\<packet>-coder.md`; a domain agent uses the same path. The report has these sections:
   - `Summary`;
@@ -19,7 +19,7 @@ Ledger: [README.md](README.md). This file holds the dispatch rules, the rules ev
   - `Findings`: anything surprising, and anything left over.
 - Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 - Research packets (wave 1) return `done` with UNRESOLVED rows when the evidence is not there. Absence is a finding, never a reason to guess.
-- A verify-only packet (NT-20) that finds a failing check on current code keeps the assertion, marks it `#[ignore = "NT finding: <one line>"]` and returns `done` with the finding. The architect turns it into a packet.
+- A verify-only packet (NX-20) that finds a failing check on current code keeps the assertion, marks it `#[ignore = "NX finding: <one line>"]` and returns `done` with the finding. The architect turns it into a packet.
 - Waves 0 and 1 dispatch **together** (9 agents). Their file sets are disjoint.
 
 ## Rules (part of every packet)
@@ -32,7 +32,7 @@ Ledger: [README.md](README.md). This file holds the dispatch rules, the rules ev
 - **R6** Files under `docs/` are CRLF. After writing one, normalise it: `$p='<absolute path>'; $nl=[string][char]13+[char]10; $t=[IO.File]::ReadAllText($p) -replace '\r?\n',$nl; [IO.File]::WriteAllText($p,$t)`. Always use absolute paths with `[IO.File]`. Never hand-edit a `<!-- gen:NAME -->` block.
 - **R7** A behaviour change needs a test that fails when the change is reverted. Live-DB tests are gated with `require_db_or_skip!`, have `live_db` in the fn or module name, and take their URL from `test_support::database_url()`. Sentinel ids fit in `i32` (from `0x7000_0000`).
 - **R8** A log line that carries an id carries its name next to it (for example `template_id` with `template_name`). No IPs, credentials or account names anywhere. Client paths appear only in the repo-relative form `..\SGW\Stargate Worlds-QA\Working\SGWGame\CookedPC`.
-- **R9** No packet before NT-41 touches `docs/gap-analysis*`, `docs/project-status.md` or `docs/guides/unified-uat.md`. No packet touches `docs/analysis/npc-combat-reference/` (V1 is closed).
+- **R9** No packet before NX-41 touches `docs/gap-analysis*`, `docs/project-status.md` or `docs/guides/unified-uat.md`. No packet touches `docs/analysis/npc-combat-reference/` (V1 is closed).
 - **R10** You get 5 reruns of any one lane check. After that, stop and return `blocked`, with a worknote in your report.
 - **R11** Evidence: label every new fact with one of the six classes (README § Evidence classes). Never present RECONSTRUCTED as original. Every RECONSTRUCTED seed row carries the C5 comment.
 - **R12** Never copy, rehost or commit client files (packages, paks, extracted assets). Cite them by package and export path.
@@ -73,18 +73,18 @@ These blocks were checked free on 2026-11-27, in the seeds and in the cooked cat
 
 | What | Ids | Owner |
 |---|---|---|
-| Debug Area templates | 1390 Titan death-drill clone (only if NT-19 needs it); 1391-1394 reserved | NT-19 |
-| Debug Area spawns | 14320 Titan (template 79), 14321 Horden (template 72); 14322-14339 reserved; footer floor 14339 | NT-03 |
-| Spawn tags | `DebugArea_NT_Titan`, `DebugArea_NT_Horden` | NT-03 |
-| Abilities | 3500 Titan Melee, 3501 Titan Ranged Attack, 3502 Create Tasker, 3503 Detonate Tasker; 3504-3509 reserved | NT-11 |
-| Effects | 9170-9179 | NT-11 |
-| Effect NVPs | 480-487 Titan; 488-489 Horden effect 1092 (only under D-NT2 option b) | NT-11, NT-17 |
-| Ability sets | 360 Straegis Titan; 361 Horden (only under D-NT2 option b); 362-364 reserved | NT-13, NT-17 |
-| Event sets | 1550-1559 | NT-12a |
-| Sequences | 3030-3049 (not in the cooked pak, so each needs an NT-12b override) | NT-12a, NT-12b |
-| Loot | loot table 40; loot rows 9160-9169 | NT-13 |
+| Debug Area templates | 1390 Titan death-drill clone (only if NX-19 needs it); 1391-1394 reserved | NX-19 |
+| Debug Area spawns | 14320 Titan (template 79), 14321 Horden (template 72); 14322-14339 reserved; footer floor 14339 | NX-03 |
+| Spawn tags | `DebugArea_NT_Titan`, `DebugArea_NT_Horden` | NX-03 |
+| Abilities | 3500 Titan Melee, 3501 Titan Ranged Attack, 3502 Create Tasker, 3503 Detonate Tasker; 3504-3509 reserved | NX-11 |
+| Effects | 9170-9179 | NX-11 |
+| Effect NVPs | 480-487 Titan; 488-489 Horden effect 1092 (only under D-NX2 option b) | NX-11, NX-17 |
+| Ability sets | 360 Straegis Titan; 361 Horden (only under D-NX2 option b); 362-364 reserved | NX-13, NX-17 |
+| Event sets | 1550-1559 | NX-12a |
+| Sequences | 3030-3049 (not in the cooked pak, so each needs an NX-12b override) | NX-12a, NX-12b |
+| Loot | loot table 40; loot rows 9160-9169 | NX-13 |
 
-### C3 `SequenceOverride` NVPs (NT-02)
+### C3 `SequenceOverride` NVPs (NX-02)
 
 In `crates/resources/src/base/sequence_overrides.rs`:
 
@@ -108,19 +108,19 @@ pub struct SequenceOverride {
 
 ### C4 Test layout
 
-The tests live in `crates/cell/src/cell/service/tests/npc_ai/debug_area_combat/creatures/`. NT-03 creates `mod.rs` and **every** file below as a stub holding a `//! <packet> fills this.` doc line, so later packets never share a file.
+The tests live in `crates/cell/src/cell/service/tests/npc_ai/debug_area_combat/creatures/`. NX-03 creates `mod.rs` and **every** file below as a stub holding a `//! <packet> fills this.` doc line, so later packets never share a file.
 
 | File | Owner |
 |---|---|
-| `mod.rs` (`CREATURE_SPAWNS`, `creature_row`) | NT-03 |
-| `titan_kit.rs` | NT-11 |
-| `titan_presentation.rs` | NT-12a |
-| `titan_set.rs` | NT-13 |
-| `stance.rs` | NT-14 |
-| `tasker.rs` | NT-15 |
-| `titan.rs` | NT-16 |
-| `horden.rs` | NT-17 |
-| `v1_regression.rs` | NT-20 |
+| `mod.rs` (`CREATURE_SPAWNS`, `creature_row`) | NX-03 |
+| `titan_kit.rs` | NX-11 |
+| `titan_presentation.rs` | NX-12a |
+| `titan_set.rs` | NX-13 |
+| `stance.rs` | NX-14 |
+| `tasker.rs` | NX-15 |
+| `titan.rs` | NX-16 |
+| `horden.rs` | NX-17 |
+| `v1_regression.rs` | NX-20 |
 
 Reuse the V1 helpers from `debug_area_combat/live_db.rs` (`fight_space`, `spawn`, `pass`, `set_pools`, `with_prefix`). Live-DB tests sit in `mod live_db { ... }` inside the owner's file.
 
@@ -129,10 +129,10 @@ Reuse the V1 helpers from `debug_area_combat/live_db.rs` (`fight_space`, `spawn`
 Put this line directly above each changed or added row:
 
 ```sql
--- RECONSTRUCTED (NT-11): Titan Melee; no original kit was cooked (README F7); anim DMelee_FINAL + Str-TitanMelee paired by name (STRONGLY INFERRED); damage per kit-spec.md
+-- RECONSTRUCTED (NX-11): Titan Melee; no original kit was cooked (README F7); anim DMelee_FINAL + Str-TitanMelee paired by name (STRONGLY INFERRED); damage per kit-spec.md
 ```
 
-### C6 Evidence registry row (NT-01 defines the file)
+### C6 Evidence registry row (NX-01 defines the file)
 
 One table per creature, with these columns:
 
@@ -142,7 +142,7 @@ One table per creature, with these columns:
 
 The fields are: template id; body set; skeletal mesh, materials and textures; AnimSet and AnimTree; each animation role (idle, walk, run, combat idle, transition, melee, ranged, hit, death, special); particle systems; audio; ability and effect ids; event-set and sequence ids; collision and physics; loot; respawn; server path; runtime test result; lab result.
 
-### C7 Telemetry (NT-14, NT-15)
+### C7 Telemetry (NX-14, NX-15)
 
 Use target `npc.creature`, emitted once per transition, never per tick:
 
@@ -155,13 +155,13 @@ Use `info!` for each. Logs must be readable from SigNoz alone.
 
 ## Wave 0: foundation (3 packets, all parallel, dispatched with wave 1)
 
-The file sets are disjoint, and each packet ships as its own PR. Merge order: NT-02, NT-03, NT-01. The wave review covers NT-01..03.
+The file sets are disjoint, and each packet ships as its own PR. Merge order: NX-02, NX-03, NX-01. The wave review covers NX-01..03.
 
-### NT-01 V1.1 evidence registry skeleton
+### NX-01 V1.1 evidence registry skeleton
 
 - **Agent:** packet-coder (docs only). **Host:** windows. **Depends:** none.
-- **Branch:** `npc-combat-v1-1/NT-01-evidence-registry`. **Worktree:** `nt-01`.
-- **Commit:** `docs(npc-combat): V1.1 evidence registry skeleton (NT-01)`
+- **Branch:** `npc-combat-v1-1/NX-01-evidence-registry`. **Worktree:** `nx-01`.
+- **Commit:** `docs(npc-combat): V1.1 evidence registry skeleton (NX-01)`
 - **Files:** new `docs/analysis/npc-combat-v1-1/evidence-registry.md`.
 - **Do:**
   1. Copy the six-class legend from README § Evidence classes.
@@ -171,17 +171,17 @@ The file sets are disjoint, and each packet ships as its own PR. Merge order: NT
      - `body_sets.sql` (the scales 1.68 and 35.15);
      - `skeletal_meshes.sql` (the sockets);
      - spawns 13306 and 14030, and lineup templates 1558 and 1570.
-  4. Mark every client row the README findings do not settle as UNRESOLVED, naming the packet that settles it (NT-04 to NT-09).
-  5. Add `## Gates` (copy G1-G5 from the README), `## Open (UNRESOLVED)` and `## Runtime results` (creature, test name, packet, result). NT-16, NT-17 and NT-30 fill the last two.
+  4. Mark every client row the README findings do not settle as UNRESOLVED, naming the packet that settles it (NX-04 to NX-09).
+  5. Add `## Gates` (copy G1-G5 from the README), `## Open (UNRESOLVED)` and `## Runtime results` (creature, test name, packet, result). NX-16, NX-17 and NX-30 fill the last two.
 - **Lane:** none (docs). Run R6 on the file.
 - **Docs:** this file is the docs row.
 - **Rules:** R1, R3, R6, R8, R9, R11.
 
-### NT-02 `SequenceOverride` NVPs
+### NX-02 `SequenceOverride` NVPs
 
 - **Agent:** packet-coder. **Host:** windows. **Depends:** none.
-- **Branch:** `npc-combat-v1-1/NT-02-sequence-override-nvps`. **Worktree:** `nt-02`.
-- **Commit:** `feat(resources): Kismet sequence overrides carry NVPs (NT-02)`
+- **Branch:** `npc-combat-v1-1/NX-02-sequence-override-nvps`. **Worktree:** `nx-02`.
+- **Commit:** `feat(resources): Kismet sequence overrides carry NVPs (NX-02)`
 - **Files:** `crates/resources/src/base/sequence_overrides.rs` only, unless the grep in step 2 finds other struct literals.
 - **Do:**
   1. Add the `nvps` field exactly as in C3.
@@ -197,14 +197,14 @@ The file sets are disjoint, and each packet ships as its own PR. Merge order: NT
   1. `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-resources`
   2. `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-resources --all-targets -- -D warnings`
   3. `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-resources sequence`
-- **Docs:** none. NT-12b documents the Titan entries.
+- **Docs:** none. NX-12b documents the Titan entries.
 - **Rules:** R1-R3, R5, R7, R10.
 
-### NT-03 Debug Area Z13 creature range and test stubs
+### NX-03 Debug Area Z13 creature range and test stubs
 
 - **Agent:** rust-gameserver-dev. Placement iteration against the reach guards is too open-ended for packet-coder. **Host:** windows. **Depends:** none.
-- **Branch:** `npc-combat-v1-1/NT-03-debug-area-z13`. **Worktree:** `nt-03`.
-- **Commit:** `feat(debug-area): Z13 creature range for Horden and the Straegis Titan (NT-03)`
+- **Branch:** `npc-combat-v1-1/NX-03-debug-area-z13`. **Worktree:** `nx-03`.
+- **Commit:** `feat(debug-area): Z13 creature range for Horden and the Straegis Titan (NX-03)`
 - **Read first:** `docs/content/debug-area.md`, especially § Z12 (about line 657) and the reach and tests sections. Then read `db/resources/Worlds/Seed/spawnlist_debug_area_reference.sql`, which is the shape to copy.
 - **Files:**
   - new `db/resources/Worlds/Seed/spawnlist_debug_area_creatures.sql`;
@@ -216,7 +216,7 @@ The file sets are disjoint, and each packet ships as its own PR. Merge order: NT
   - world 1300, with the tags from C2;
   - `aggression_override` NULL, so they are aggressive;
   - `respawn_secs` 30;
-  - `loot_table_id` NULL (NT-13 may set the Titan's);
+  - `loot_table_id` NULL (NX-13 may set the Titan's);
   - a footer `setval(..., GREATEST(<current>, 14339))` in the form the reference file uses.
 - **Placement:**
   - Use open, flat, navmesh-connected ground that no Z1-Z12 zone uses.
@@ -234,7 +234,7 @@ The file sets are disjoint, and each packet ships as its own PR. Merge order: NT
   - no-DB, in `creatures/mod.rs`:
     1. `creature_range_holds_titan_and_horden`: the `world_records()` rows in `CREATURE_SPAWNS` are exactly the two tags, with templates {79, 72}, `respawn_secs` 30 and `aggression_override` `None`.
     2. `creature_pens_are_apart`: the Titan pen is at least 120 m from every other world-1300 spawn, and Horden is at least 50 m from everything.
-    3. `creature_profiles_today`: `ability_ids` are empty for both templates. NT-13 and NT-17 change this test's expectation, and say so in a comment.
+    3. `creature_profiles_today`: `ability_ids` are empty for both templates. NX-13 and NX-17 change this test's expectation, and say so in a comment.
   - live-DB, in `creatures/mod.rs` `mod live_db`:
     1. `live_db_debug_area_creature_rows_load`: `load_spawns_from_db` filtered to `CREATURE_SPAWNS` gives 2 rows.
   - Revert proof: dropping the seed file or its `\ir` line fails tests 1 and 4.
@@ -257,7 +257,7 @@ The file sets are disjoint, and each packet ships as its own PR. Merge order: NT
 
 ## Wave 1: research (6 packets, all parallel, dispatched with wave 0)
 
-All six are docs only, with disjoint files, and each ships as its own PR in any order. The wave review covers NT-04..09 and checks that their answers agree with each other.
+All six are docs only, with disjoint files, and each ships as its own PR in any order. The wave review covers NX-04..09 and checks that their answers agree with each other.
 
 **Shared research rules (inline these in each brief):**
 
@@ -268,11 +268,11 @@ All six are docs only, with disjoint files, and each ships as its own PR in any 
 - Write one agent-memory fact file under `.claude/agent-memory/game-archaeology-specialist/` (or your own agent's folder), plus its index line.
 - Rules: R1, R3, R6, R8, R9, R11, R12. The lane applies only to the Rust bins.
 
-### NT-04 Titan package assets
+### NX-04 Titan package assets
 
 - **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** G5 (the owner's client tree; without it, return `blocked - no client tree`).
-- **Branch:** `npc-combat-v1-1/NT-04-titan-assets`. **Worktree:** `nt-04`.
-- **Commit:** `docs(re): Straegis Titan package assets (NT-04)`
+- **Branch:** `npc-combat-v1-1/NX-04-titan-assets`. **Worktree:** `nx-04`.
+- **Commit:** `docs(re): Straegis Titan package assets (NX-04)`
 - **Files:** new `docs/reverse-engineering/findings/straegis-titan-assets.md`, and the memory fact file.
 - **Input:** `MOB_StraegisTitan.upk` (README F5), and `GLB_Components.upk` for its "StraegisTitan" reference.
 - **Output must answer:**
@@ -285,11 +285,11 @@ All six are docs only, with disjoint files, and each ships as its own PR in any 
   7. A verdict on F11 (a) versus (b), as far as the package alone shows it.
 - **Lane:** only for the Rust bins. Run R6.
 
-### NT-05 Titan VFX, the Straegis KIS and the tasker
+### NX-05 Titan VFX, the Straegis KIS and the tasker
 
 - **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** G5.
-- **Branch:** `npc-combat-v1-1/NT-05-titan-vfx-tasker`. **Worktree:** `nt-05`.
-- **Commit:** `docs(re): Straegis Titan VFX, KIS and the tasker (NT-05)`
+- **Branch:** `npc-combat-v1-1/NX-05-titan-vfx-tasker`. **Worktree:** `nx-05`.
+- **Commit:** `docs(re): Straegis Titan VFX, KIS and the tasker (NX-05)`
 - **Files:** new `docs/reverse-engineering/findings/straegis-titan-vfx-and-tasker.md`, and the memory fact file.
 - **Input:**
   - `Straegis-VFX.upk` (the 17 systems in F6);
@@ -304,30 +304,30 @@ All six are docs only, with disjoint files, and each ships as its own PR in any 
   5. Any Titan link in `Straegis.upk` or `Cine-Marsh_Straegis.upk` (sequence 1751 is a camera-only Matinee, per agent memory `reference_cellblock_asset_audit`).
 - **Lane:** only for the Rust bins. Run R6.
 
-### NT-06 Horden cross-build search and reconstruction options
+### NX-06 Horden cross-build search and reconstruction options
 
 - **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** G5.
-- **Branch:** `npc-combat-v1-1/NT-06-horden-assets`. **Worktree:** `nt-06`.
-- **Commit:** `docs(re): Horden assets, the missing AnimSet and the options (NT-06)`
+- **Branch:** `npc-combat-v1-1/NX-06-horden-assets`. **Worktree:** `nx-06`.
+- **Commit:** `docs(re): Horden assets, the missing AnimSet and the options (NX-06)`
 - **Files:** new `docs/reverse-engineering/findings/horden-assets.md`, and the memory fact file.
 - **Do:**
   1. Confirm F2 in every local tree: QA, `Client\game` and the editor download. Also check the UE3 source folders under `..\SGW\Src` and the SGW_FINAL indexes (agent memory `project_final_re_bundles`) for any Horden AnimSet, AnimTree, sound or effect. Absence in a partial build is "unknown", not "never existed".
   2. List the skeleton: bone count, names and hierarchy. Compare it with every other `MOB_*` skeleton in the QA tree for an exact-name match that could share an AnimSet. Expect none, and say so.
-  3. State what the client renders for a skeletal mesh with no AnimSet: the reference pose. Mark it STRONGLY INFERRED unless NT-07 confirms it.
+  3. State what the client renders for a skeletal mesh with no AnimSet: the reference pose. Mark it STRONGLY INFERRED unless NX-07 confirms it.
   4. Write the options table, with cost and gates for each:
      - (a) a static mesh only, the documented blocker;
      - (b) another build (where it might exist, and who could hold it);
      - (c) an authored AnimSet in an engine-3004 UE3 editor, shipped as a client patch (owner decision, RECONSTRUCTED);
      - (d) any procedural option the engine offers (for example a morph or a physics wobble), only if the package supports it.
   5. List every Horden spawn in the seeds (worlds and counts).
-- **Output must answer:** D-NT1's facts (is there any recoverable animation?) and D-NT2's facts (is there any attack evidence?).
+- **Output must answer:** D-NX1's facts (is there any recoverable animation?) and D-NX2's facts (is there any attack evidence?).
 - **Lane:** only for the Rust bins. Run R6.
 
-### NT-07 Client creature animation path (Ghidra)
+### NX-07 Client creature animation path (Ghidra)
 
 - **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** none. It uses the Ghidra MCP or headless Ghidra (agent memory `reference_ghidra_headless`), not the live client.
-- **Branch:** `npc-combat-v1-1/NT-07-creature-anim-path`. **Worktree:** `nt-07`.
-- **Commit:** `docs(re): client creature animation and stance path (NT-07)`
+- **Branch:** `npc-combat-v1-1/NX-07-creature-anim-path`. **Worktree:** `nx-07`.
+- **Commit:** `docs(re): client creature animation and stance path (NX-07)`
 - **Files:** new `docs/reverse-engineering/findings/creature-animation-path.md`, and the memory fact file.
 - **Read first:**
   - `docs/reverse-engineering/findings/npc-attack-presentation.md` (BSF_InCombat, SequenceManager);
@@ -337,36 +337,36 @@ All six are docs only, with disjoint files, and each ships as its own PR in any 
 - **Output must answer** (cite the function address and name for each):
   1. How the client picks the AnimSet for an NPC from `BodySet.BodyStances[]`. Which server-sent property or flag selects the stance? Does `BSF_InCombat` switch an NPC between stances?
   2. Which node plays `cAnimOneShot` or `sAnimOneShot` from the generic KIS, and does it need an AnimNodeSlot in the AnimTree? Does `SGWAnim_SequenceListPlayer` play `s`-prefixed names?
-  3. What a skeletal mesh with no AnimSet renders (this answers NT-06 step 3).
+  3. What a skeletal mesh with no AnimSet renders (this answers NX-06 step 3).
   4. Whether BlendBySpeed's Walking and Running nodes follow the server-driven NPC velocity.
   5. A verdict on README F11 (a) versus (b).
 - **Lane:** none. Run R6.
 
-### NT-08 Client handling of unknown NPC ability ids (Ghidra)
+### NX-08 Client handling of unknown NPC ability ids (Ghidra)
 
 - **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** none.
-- **Branch:** `npc-combat-v1-1/NT-08-unknown-ability-id`. **Worktree:** `nt-08`.
-- **Commit:** `docs(re): client display of NPC ability ids outside its catalogue (NT-08)`
+- **Branch:** `npc-combat-v1-1/NX-08-unknown-ability-id`. **Worktree:** `nx-08`.
+- **Commit:** `docs(re): client display of NPC ability ids outside its catalogue (NX-08)`
 - **Files:** new `docs/reverse-engineering/findings/npc-unknown-ability-id.md`, and the memory fact file.
 - **Output must answer:**
   1. Where the client turns an ability id into the name in the combat log, in the cast bar and in a hit message.
   2. What it does with an id that has no `CookedDataAbilities` entry (3500 and up): a blank name, "Unknown", a skipped message, an assert or a crash?
   3. Whether the cooked-data resync (`versionInfoRequest`, `onVersionInfo(InvalidateAll)`, then `resourceFragment`, #840) covers the abilities category the way it covers category 1. Cite `crates/resources/src/base/resources/apply_overrides.rs` and `dialog_overrides` for the server side.
   4. The cause of V1 anomaly K26 (a blank attacker name for templates 4 and 76): the missing template `name_id`, or something else.
-- **Why:** it decides D-NT4 and NT-18.
+- **Why:** it decides D-NX4 and NX-18.
 - **Lane:** none. Run R6.
 
-### NT-09 Server runtime trace for templates 72 and 79
+### NX-09 Server runtime trace for templates 72 and 79
 
 - **Agent:** npc-ai-spawn-advisor. It is read-only on code and writes one doc. **Host:** windows. **Depends:** none.
-- **Branch:** `npc-combat-v1-1/NT-09-runtime-trace`. **Worktree:** `nt-09`.
-- **Commit:** `docs(npc-combat): server runtime trace for Horden and the Titan (NT-09)`
+- **Branch:** `npc-combat-v1-1/NX-09-runtime-trace`. **Worktree:** `nx-09`.
+- **Commit:** `docs(npc-combat): server runtime trace for Horden and the Titan (NX-09)`
 - **Files:** new `docs/analysis/npc-combat-v1-1/runtime-trace.md`.
 - **Do:** trace, with file:line for each step, what the server does for a spawned template 72 and 79:
   1. Spawn, then the C1 profile (`Unresolved`), then aggro acquisition. Does an `Unresolved` NPC still acquire aggro, chase or leash?
   2. Movement: the navmesh agent radius and step height used for an NPC. Does body scale 35.15 matter to pathing or reach? Does the server have a per-template reach or melee distance?
   3. Which flags and properties the server sends that the client uses for stance and presentation: `BSF_InCombat`, any stance property, `onSequence`.
   4. Whether gallery spawn 13306 (Z7) and lineup template 1570 stay passive when template 79 gains a set (the aggression override and the lineup passive flag).
-  5. The code points NT-14 (a stance or phase switch) and NT-15 (a ground-point delayed area hit) would touch, and any existing mechanic each can reuse (deployables, ground-target AoE, `death/side_effects.rs`).
+  5. The code points NX-14 (a stance or phase switch) and NX-15 (a ground-point delayed area hit) would touch, and any existing mechanic each can reuse (deployables, ground-target AoE, `death/side_effects.rs`).
 - **Lane:** none. Run R6.
 - **Rules:** R1, R3, R6, R8, R9, R11.

@@ -21,7 +21,7 @@ Ledger: [README.md](README.md). This file holds the dispatch rules, the rules ev
 - Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 - Research packets return `done` with UNRESOLVED rows when the evidence is absent. Absence is a finding, never a reason to guess.
 - A verify-only packet (NR-35) that finds a failing check on current code keeps the assertion, marks it `#[ignore = "NR finding: <one line>"]` and returns `done` with the finding.
-- Waves 0 and 1 dispatch together. NR-03 waits for V1.1 NT-03 to merge, and NR-08 for V1.1 NT-04 and NT-05.
+- Waves 0 and 1 dispatch together. NR-03 waits for V1.1 NX-03 to merge, and NR-08 for V1.1 NX-04 and NX-05.
 
 ## Rules (part of every packet)
 
@@ -81,13 +81,13 @@ Checked free on 2026-11-27. V1.1 owns the blocks before these ([V1.1 C2](../npc-
 | Debug Area spawns | 14340-14399; footer floor 14399 | NR-03, then batches per NR-10 |
 | Spawn tags | `DebugArea_NR_<Family>_<Name>` (for example `DebugArea_NR_Creature_Carnosaur`) | NR-03 |
 | Ability sets | 365-372 weapon sets (NR-11); 373-379 mechanical (NR-13); 380-389 creatures (one per creature: 380 AMBRat, 381 Carnosaur, 382 Rhinolion, 383 Lenny, 384 Twilla, 385 Straegis Fighter, 386 Straegis Beacon); 390-399 Goa'uld and unarmed (NR-32, NR-33) | as listed |
-| Abilities | 3510-3549, only with V1.1 D-NT4 in force | NR-10 assigns |
+| Abilities | 3510-3549, only with V1.1 D-NX4 in force | NR-10 assigns |
 | Effects | 9180-9219 | NR-10 assigns |
 | Effect NVPs | 490-549 | NR-10 assigns |
 | Event sets | 1560-1599 | NR-10 assigns |
 | Sequences | 3050-3099 (each needs an override, V1.1 C3) | NR-10 assigns |
 
-Effect 1092 (983 Bite) gets its script and NVPs **once**. The first of V1.1 NT-17 (D-NT2 option b), V2 NR-14 (AMBRat) and V2 NR-22 (Carnosaur) that uses 983 Bite owns that edit. NR-10 checks `origin/main` and tells the other packet to reuse it.
+Effect 1092 (983 Bite) gets its script and NVPs **once**. The first of V1.1 NX-17 (D-NX2 option b), V2 NR-14 (AMBRat) and V2 NR-22 (Carnosaur) that uses 983 Bite owns that edit. NR-10 checks `origin/main` and tells the other packet to reuse it.
 
 ### C3 Batch packet shape
 
@@ -149,7 +149,7 @@ The fields are: templates (world and lineup); body set; weapon component; AnimSe
 
 ## Wave 0: foundation (3 packets, one PR each)
 
-Merge order: NR-02, NR-01, NR-03 (after V1.1 NT-03). The wave review covers all three.
+Merge order: NR-02, NR-01, NR-03 (after V1.1 NX-03). The wave review covers all three.
 
 ### NR-01 Backlog classification
 
@@ -191,7 +191,7 @@ Merge order: NR-02, NR-01, NR-03 (after V1.1 NT-03). The wave review covers all 
 
 ### NR-03 Debug Area Z14 roster range and test stubs
 
-- **Agent:** rust-gameserver-dev. **Host:** windows. **Depends:** V1.1 NT-03 merged on main (it creates `spawnlist_debug_area_creatures.sql` and the Z13 docs NR-03 sits beside).
+- **Agent:** rust-gameserver-dev. **Host:** windows. **Depends:** V1.1 NX-03 merged on main (it creates `spawnlist_debug_area_creatures.sql` and the Z13 docs NR-03 sits beside).
 - **Branch:** `npc-combat-v2/NR-03-debug-area-z14`. **Worktree:** `nr-03`.
 - **Commit:** `feat(debug-area): Z14 roster range for the V2 NPC families (NR-03)`
 - **Files:**
@@ -294,7 +294,7 @@ Merge order: NR-02, NR-01, NR-03 (after V1.1 NT-03). The wave review covers all 
 
 ### NR-08 Straegis Fighter and Beacon as hostiles
 
-- **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** V1.1 NT-04 and NT-05 merged (it reuses their KIS and VFX answers), and A4.
+- **Agent:** game-archaeology-specialist. **Host:** windows. **Depends:** V1.1 NX-04 and NX-05 merged (it reuses their KIS and VFX answers), and A4.
 - **Branch:** `npc-combat-v2/NR-08-straegis-hostiles`. **Worktree:** `nr-08`.
 - **Commit:** `docs(re): Straegis Fighter and Beacon as hostile NPCs (NR-08)`
 - **Files:** new `docs/reverse-engineering/findings/straegis-fighter-beacon-hostile.md`, and the memory fact.

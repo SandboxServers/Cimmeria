@@ -261,7 +261,7 @@ Integration (D-NR12):
   - the world name is `DebugArea`;
   - `/gmsethealth` fails, so refill health by death and Release;
   - stand 4-6 m off targets;
-  - take `lab_screenshot` with `image: true` at each beat (V1.1 D-NT7).
+  - take `lab_screenshot` with `image: true` at each beat (V1.1 D-NX7).
 - **Sessions:**
   1. B1, B3 and the AMBRat.
   2. B2 and B4b.

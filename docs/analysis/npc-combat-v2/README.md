@@ -16,8 +16,8 @@ The six evidence classes are V1's: ORIGINAL CLIENT VERIFIED, EARLIEST LEGACY DAT
 
 V2 depends on V1.1 in two places:
 
-- the `SequenceOverride` NVP field (NT-02), used only if a batch needs a new sequence;
-- D-NT4, the ability-override category, used only if a batch needs a new ability id.
+- the `SequenceOverride` NVP field (NX-02), used only if a batch needs a new sequence;
+- D-NX4, the ability-override category, used only if a batch needs a new ability id.
 
 The plan avoids new ability ids where a seeded ability already fits.
 
@@ -34,7 +34,7 @@ The plan avoids new ability ids where a seeded ability already fits.
 | R7 | Creature candidates from NC-34: 983 Bite (effect 1092 `-125F -15H`, no script yet), 984 Infected Bite and 1433 Mob Strike (set 6, the ScavDog set, RECONSTRUCTED). No client record pairs any of them with a specific creature. | EARLIEST LEGACY DATA; RECONSTRUCTED (set 6) | `npc-combat-reference/roster-followup.md` | B4, D-NR2 |
 | R8 | The Straegis Fighter has pet abilities 1156, 2847 and 1240 with presentation event sets (`sEmitAura`), and the summon family 2826 and 3491-3497. Hostile Fighter (78) and Beacon (77) templates can reuse the pet abilities, which is evidence the Titan lacks. | EARLIEST LEGACY DATA | `abilities.sql`; V1.1 README F7 | NR-08, B5 |
 | R9 | Unas have no ability and no weapon component (NC-34). The pets content inventory records that no Unas ability exists. | EARLIEST LEGACY DATA (absence) | `roster-followup.md` | D-NR1 |
-| R10 | The V1 combat anomaly K26 (blank attacker name on templates 4 and 76) applies to any template with no `name_id`. V1.1 NT-08 finds the cause. | CURRENT CIMMERIA IMPLEMENTATION | `w4-lab-results.md` | registry rows |
+| R10 | The V1 combat anomaly K26 (blank attacker name on templates 4 and 76) applies to any template with no `name_id`. V1.1 NX-08 finds the cause. | CURRENT CIMMERIA IMPLEMENTATION | `w4-lab-results.md` | registry rows |
 
 ## Batches (ordered by evidence)
 
@@ -59,7 +59,7 @@ Friendly, interactive, vendor and trainer NPCs are out of scope. They keep holdi
 | D-NR1 | Unas | **BlockedDecision** | **Hold fire** until NR-07 finds a client attack for them (R9). Pin the behaviour with a test, and write the gate in the registry. Alternative: 733 Fists Melee AA on the Jaffa body, STRONGLY INFERRED. |
 | D-NR2 | Creature sets: one per creature, or shared | **BlockedDecision** | **One set per creature** (the NC-34 default), each RECONSTRUCTED, using 983 Bite or 1433 Mob Strike as NR-10 assigns from the NR-05 and NR-06 findings. Sharing set 6 is quicker, but it shows six creatures with an attack the client never paired with them. |
 | D-NR3 | Lenny's baby (1557, lineup only) | **BlockedDecision** | Leave it NULL: it is a lineup-only row with no world template, so a set changes nothing in play. |
-| D-NR4 | Lineup rows | Decided (architect) | A lineup template takes its world template's set when V1.1 NT-09 confirms the lineup flag keeps it passive. The V1 Jaffa lineup actors 1380 and 1381 already work this way. |
+| D-NR4 | Lineup rows | Decided (architect) | A lineup template takes its world template's set when V1.1 NX-09 confirms the lineup flag keeps it passive. The V1 Jaffa lineup actors 1380 and 1381 already work this way. |
 | D-NR5 | Retiring the 592 placeholder | **BlockedDecision** | **Yes.** Once B1 gives every whitelist template its own weapon set, set `PLACEHOLDER_POLICY` so that no NPC receives 592 implicitly (NR-15), and keep the policy enum for tests. This changes the V1 C1 contract, so the owner approves it. Alternative: keep 592 for unmapped firearm prefixes. |
 | D-NR6 | Unarmed hostile humanoids | **BlockedDecision** | Give hostile unarmed human and Jaffa mobs **733 Fists Melee AA**, labelled STRONGLY INFERRED: it is the player's unarmed attack on the same body and animations. Friendly NPCs keep holding fire. Alternative: hold fire. |
 | D-NR7 | Goa'uld combat | **BlockedDecision** (asked once NR-07 lands) | Research first (NR-07). Give a Goa'uld the ribbon device (712 and 711) only where its template or client art carries a ribbon device, and the staff where it carries a staff. Any Goa'uld boss special waits for its own evidence. |
@@ -77,12 +77,12 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 |---|---|---|---|---|---|
 | NR-01 | Backlog classification | 0 | packet-coder | none | Ready |
 | NR-02 | V2 evidence registry skeleton | 0 | packet-coder | none | Ready |
-| NR-03 | Debug Area Z14 roster range and test stubs | 0 | rust-gameserver-dev | V1.1 NT-03 merged (shared files) | BlockedDependency |
+| NR-03 | Debug Area Z14 roster range and test stubs | 0 | rust-gameserver-dev | V1.1 NX-03 merged (shared files) | BlockedDependency |
 | NR-04 | Weapon class to auto-attack map | 1 | combat-systems-advisor | none | Ready |
 | NR-05 | AMBRat, Carnosaur and Rhinolion assets | 1 | game-archaeology-specialist | client tree | Ready |
 | NR-06 | Lenny, Twilla, drones, BattleWalker and Android assets | 1 | game-archaeology-specialist | client tree | Ready |
 | NR-07 | Goa'uld and Unas client evidence | 1 | game-archaeology-specialist | client tree | Ready |
-| NR-08 | Straegis Fighter and Beacon as hostiles | 1 | game-archaeology-specialist | V1.1 NT-04, NT-05 | BlockedDependency |
+| NR-08 | Straegis Fighter and Beacon as hostiles | 1 | game-archaeology-specialist | V1.1 NX-04, NX-05 | BlockedDependency |
 | NR-10 | Batch spec (re-slice checkpoint) | gate | architect | NR-01, NR-04..07 | BlockedDependency |
 | NR-11 | Weapon auto-attack sets | 2 | packet-coder | NR-10 | BlockedDependency |
 | NR-12 | B1 firearm humans pick their weapon set | 2 | packet-coder | NR-11 | BlockedDependency |
@@ -105,7 +105,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | NR-50 | Campaign review loop | 6 | packet-reviewer | wave 5 | BlockedDependency |
 | NR-51 | Close-out | 6 | documentation-writer | NR-50 | BlockedDependency |
 
-NR-09 is not a packet: the lineup-flag question it would answer is in V1.1 NT-09.
+NR-09 is not a packet: the lineup-flag question it would answer is in V1.1 NX-09.
 
 ## Client-asset gates
 
@@ -115,13 +115,13 @@ NR-09 is not a packet: the lineup-flag question it would answer is in V1.1 NT-09
 | A2 | No audio bank except `mob_caDroneFlyer` and `mob_scav` | Sound rows UNRESOLVED for every family except drones and ScavDog |
 | A3 | The lab has no audio | Sound NOT VERIFIED everywhere |
 | A4 | Research needs the owner's client tree (not in git) | NR-05..08 return `blocked - no client tree` without it |
-| A5 | Any new ability id needs V1.1 D-NT4 | Batches reuse seeded abilities wherever one fits |
+| A5 | Any new ability id needs V1.1 D-NX4 | Batches reuse seeded abilities wherever one fits |
 
 ## ETA (wall clock, wide fan-out)
 
 | Phase | Parallel width | Wall clock | Gated by |
 |---|---|---|---|
-| Waves 0 and 1 | 8 agents (NR-03 and NR-08 start when V1.1 allows) | 3-4 h | client tree; V1.1 NT-03, NT-04 and NT-05 |
+| Waves 0 and 1 | 8 agents (NR-03 and NR-08 start when V1.1 allows) | 3-4 h | client tree; V1.1 NX-03, NX-04 and NX-05 |
 | NR-10, and owner decisions D-NR1-3, 5-7 and 10 | 1 agent | 1 h, plus the owner's reply time | the owner |
 | Wave 2 (`nr-w2`) | 5 agents | 3-4 h | NR-10 |
 | Wave 3 (`nr-w3`) | 6 agents | 3-4 h | wave 2 merged (shared seed files) |
@@ -136,7 +136,7 @@ NR-09 is not a packet: the lineup-flag question it would answer is in V1.1 NT-09
 - At about two Sonnet review passes per packet and $0.68 a pass, packet reviews cost about $30. Add three wave reviews and the campaign review.
 - The five research packets and the lab sessions are the main cost.
 - To save money:
-  - reuse seeded abilities, which avoids D-NT4 and NT-18;
+  - reuse seeded abilities, which avoids D-NX4 and NX-18;
   - batch by family, so one reference-test shape serves a whole batch;
   - pin hold-fire NPCs with one table-driven test (NR-34), not one test each;
   - run the lab by batch, several NPCs per session.
