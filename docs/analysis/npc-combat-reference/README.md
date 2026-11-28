@@ -4,7 +4,7 @@ Ledger for "SGW Reconstruction Campaign 01: original NPC combat, weapons,
 creature attacks and animation restoration" (brief from Lomiada, 2026-11).
 Packets: [work-packets.md](work-packets.md) (rules, contract, wave 0),
 [work-packets-w1-w2.md](work-packets-w1-w2.md) and
-[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md).
+[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; open: blank PRU/ScavDog attacker name in the client combat log, NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
 
 ## Purpose
 
