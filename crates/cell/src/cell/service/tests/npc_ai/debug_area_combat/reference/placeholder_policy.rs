@@ -91,7 +91,7 @@ mod live_db {
         assert_eq!(p.stats.get(HEALTH).unwrap().cur, 1000, "undamaged");
     }
 
-    /// A human firearm firearm earns 592 even with no set: the NPC knows it and
+    /// A human firearm earns 592 even with no set: the NPC knows it and
     /// starts it at 5 m (its cooldown is set) with no unresolved row. Revert
     /// proof: dropping the firearm grant leaves the NPC knowing nothing.
     #[tokio::test]

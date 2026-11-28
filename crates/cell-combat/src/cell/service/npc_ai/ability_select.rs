@@ -87,7 +87,7 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
 /// slot is a firing position. An ability with no def counts as ranged, the
 /// same way [`effective_max_range`] resolves it, and an NPC with no known
 /// abilities holds fire (no placeholder under `RequireWeaponEvidence` unless
-/// the template carries human firearm; NC-30).
+/// the template carries a human firearm component; NC-30).
 pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
     let Some(npc) = space_mgr.get_entity(npc_id) else {
         return false;
