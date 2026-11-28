@@ -47,7 +47,8 @@ Rows follow the C6 layout: `Field | Value | Class | Source | Packet`.
 | Audio | Not checked for the NID in NC-06 | UNRESOLVED | (client) | NC-06 |
 | Client build | Not recorded (no build stamp on the owner's copy in the repo) | UNRESOLVED | (owner client) | NC-06 |
 | Server path | Ability choice uses set 3 (`known_count()` is non-zero, so no 592 fallback) | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-69` | NC-02 |
-| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Live run at Z12 not done | UNRESOLVED | (Debug Area, Z12) | NC-31 (NC-40) |
+| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Lab run NC-40: NID Guard 100430 cast ability 559 about every 2 s, 37 casts, each dispatching effect 5310 (10H/100F per hit); no 592, no 621. Player died after 37 casts | CURRENT CIMMERIA IMPLEMENTATION (lab NC-40, 2026-11-27, server 086fc2710) | [w4-lab-results.md](w4-lab-results.md) | NC-40 |
+| Runtime presentation and respawn | Animation, muzzle effect, sound and the 20 s respawn after a kill were not verified in the client | UNRESOLVED | [w4-lab-results.md](w4-lab-results.md) | NC-40 |
 
 ## Praxis Jaffa Guard and Lieutenant (templates 160 and 159)
 
@@ -71,7 +72,8 @@ columns are Guard (160) and Lieutenant (159).
 | Sequence ids | Traced by NC-04 for sets 300 and 301 (`presentation-chain.md`). Whether set 300 draws in melee stance is UNRESOLVED | Same as 160 | UNRESOLVED (melee stance) | `presentation-chain.md`; [reference-npc-presentation.md](../../reverse-engineering/findings/reference-npc-presentation.md) § Jaffa body, § Answers to NC-04 § Gaps | NC-04, NC-06 |
 | Animation, audio, client build | Staff chain and melee AnimSequences read (`WP-Jaffa.upk` export 435, `JF-StaffWeapon_01` export 530, `JM_Animation.upk`). Audio not checked. Client build not recorded | Same | ORIGINAL CLIENT VERIFIED (exports); UNRESOLVED (audio, build) | [reference-npc-presentation.md](../../reverse-engineering/findings/reference-npc-presentation.md) § Jaffa serpent staff, § Melee AnimSequences | NC-06 |
 | Server path | Ability choice uses set 4 (`known_count()` is non-zero, so no 592 fallback). Inside `NPC_MELEE_RANGE` (3.0 m, `aggro.rs:112`) an off-cooldown melee ability wins (D-NC4, NC-20), so 710 fires at melee reach. Beyond it the lowest-id off-cooldown ability wins, so 584 fires at range and while 710 cools | same | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-69`, `:149-184` | NC-20 |
-| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Live run at Z12 not done | Same | UNRESOLVED | (Debug Area, Z12) | NC-31 (NC-41) |
+| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Lab run NC-41: Jaffa 100433 and 100434 fired abilities 584 (30 rows) and 710 (41 rows), effect 736 117 times; no 592. Both closed to melee range from 15 m and 8 m | CURRENT CIMMERIA IMPLEMENTATION (lab NC-41, 2026-11-27, server 086fc2710) | [w4-lab-results.md](w4-lab-results.md) | NC-41 |
+| Runtime damage and presentation | Damage felt high (760 to 0 in about 10 s at 2 m); effect 736 payload stays RECONSTRUCTED (D-NC2), owner tuning. The 15 m ranged-blast row and the D-NC4 melee preference were only partly isolated. Staff animation and effects were not verified | RECONSTRUCTED; animation, VFX and sound UNRESOLVED (no lab audio; screenshot not inspected) | [w4-lab-results.md](w4-lab-results.md) | NC-41 |
 
 ## ScavDog (template 76)
 
@@ -93,7 +95,8 @@ columns are Guard (160) and Lieutenant (159).
 | Sequence ids | `mob_scav.fev` holds five variants of one `attack` event. No notify in `MOB_ScavDog.upk` references them (the package has no AnimNotify), and no cooked package holds `mob_scav` as an event path (the bytes occur as the `MOB_ScavDog` object-name prefix in three packages, in the FEV and FSB files, and in the `GameplayEngine.ini` project registration). How the event path is built at run time is UNRESOLVED | UNRESOLVED | [scavdog-combat-assets.md](../../reverse-engineering/findings/scavdog-combat-assets.md) § Events (`:110-119`) | NC-05 |
 | Animation package, audio, client build | `MOB_ScavDog.upk` (eight sequences; one attack, `sAttack1`, 1.133 s) and `VFX-ScavDog.upk` (`VFX-Attack` unreferenced by any cooked file) read; `BodySounds` empty. Stance `MeleeDistance` is 0 (value ORIGINAL CLIENT VERIFIED), but what the client reads it for is UNRESOLVED, so it is not a reach. Client build not recorded | ORIGINAL CLIENT VERIFIED (package contents); UNRESOLVED (attack spawn, MeleeDistance use, build) | [scavdog-combat-assets.md](../../reverse-engineering/findings/scavdog-combat-assets.md) lines 11, 35-39, 76, 143 | NC-05 |
 | Server path | Ability choice uses set 6 (1433). Its reach is the melee reach through `effective_max_range` (`ability_select.rs:28`), so the ScavDog bites at melee range only. No 592 fallback | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:28`, `:59-69` | NC-13 |
-| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Live run at Z12 not done | UNRESOLVED | (Debug Area, Z12) | NC-31 (NC-42) |
+| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Lab run NC-42: ScavDog 100432 cast ability 1433 Mob Strike (180 rows, 2.0 s cooldown) from about 2.5 m without moving; no 592 | CURRENT CIMMERIA IMPLEMENTATION (lab NC-42, 2026-11-27, server 086fc2710) | [w4-lab-results.md](w4-lab-results.md) | NC-42 |
+| Runtime presentation | Animation not verified. The client combat log shows a blank attacker name (open issue) | UNRESOLVED | [w4-lab-results.md](w4-lab-results.md) | NC-42 |
 
 ## Prisoner Retrieval Unit (template 4)
 
@@ -112,7 +115,8 @@ columns are Guard (160) and Lieutenant (159).
 | Sequence ids, animation | Sequence 1869 (event 2004) is `KIS-SA_Beam_Source` inside target set 803, a seed anomaly. The KD byte map and the slot KeyNames are UNRESOLVED. Animation package read as a mechanical construct with an integrated weapon (NC-14, `pru_reference_has_integrated_weapon`) | UNRESOLVED | [reference-npc-presentation.md](../../reverse-engineering/findings/reference-npc-presentation.md) § PRU drone, § Unresolved | NC-04, NC-07 |
 | Audio, client build | Not checked | UNRESOLVED | (client) | NC-06 |
 | Server path | Ability choice uses set 2 (`known_count()` is non-zero, so no 592 fallback) | CURRENT CIMMERIA IMPLEMENTATION | `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-69` | NC-14 |
-| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Live run at Z12 not done | UNRESOLVED | (Debug Area, Z12) | NC-31 (NC-43) |
+| Runtime test result | Unit and live-DB tests green on the W2 tree (§ Runtime results). Lab run NC-43: PRU 100431 fired ability 221 (effect 264), 23 rows; no 592. Client showed Energy Shock for 16 Health per hit | CURRENT CIMMERIA IMPLEMENTATION (lab NC-43, 2026-11-27, server 086fc2710) | [w4-lab-results.md](w4-lab-results.md) | NC-43 |
+| Runtime presentation | Beam and animation not verified. The client combat log shows a blank attacker name (open issue) | UNRESOLVED | [w4-lab-results.md](w4-lab-results.md) | NC-43 |
 
 ## Open (UNRESOLVED)
 
@@ -163,7 +167,7 @@ closed in Wave 2 stay listed, struck through, so the trail is kept.
   for is not traced in `SGW.exe`. The ScavDog's reach is therefore not a
   client value; the server reach is `NPC_MELEE_RANGE` (RECONSTRUCTED). Packet: NC-05.
 - **O16 (D-NC7, approved in principle 2026-11-27).** Live-client UAT in the lab
-  is not run. Each run is asked first; Z12 is the place. Packets: NC-40..44.
+  ran on 2026-11-27 (NC-40..44, [w4-lab-results.md](w4-lab-results.md)): server behaviour attested, presentation (animation, VFX, sound) still UNRESOLVED. Packets: NC-40..44.
 - **O17.** The 1105 burst-source anomaly (`KIS-SA_Burst_Source` in target set
   289, the NID SMG) is not checked in the client. Packet: NC-06.
 
@@ -172,7 +176,7 @@ closed in Wave 2 stay listed, struck through, so the trail is kept.
 Filled by NC-31 from the tests in the W2 integration tree (`2a1887107`). The
 W2 review ran the full cell-world, cell-combat and cell nextest and live-DB
 suites green on that tree (RESUME.md, 2026-11-27). NC-31 did not re-run them,
-and no live Z12 run has happened (W4, D-NC7).
+and the live Z12 lab runs of 2026-11-27 (W4, D-NC7) are recorded in the last row and in [w4-lab-results.md](w4-lab-results.md).
 
 | Reference | Test name | Packet | Result |
 |---|---|---|---|
@@ -185,4 +189,4 @@ and no live Z12 run has happened (W4, D-NC7).
 | Z12 range | `reference_range_holds_the_four_references`, `live_db_debug_area_reference_rows_load` | NC-03 | Green on W2 tree |
 | Harset Jaffa and pets | `live_db_regression_harset_jaffa_profiles`, `live_db_regression_jaffa_pet_sets_carry_staff` | NC-24 | Green on W2 tree (live DB) |
 | Tutorial and CellBlock | `live_db_regression_cellblock_profiles_unchanged`, `live_db_regression_tutorial_no_set_mobs_keep_firing_under_legacy`, `live_db_regression_pru_cellblock_activation_rows_intact` | NC-23 | Green on W2 tree (live DB) |
-| Z12 in the game | Live UAT at Z12 for NID, Jaffa, ScavDog and PRU | NC-40..43 | Not run (D-NC7) |
+| Z12 in the game | Lab runs 2026-11-27 (server 086fc2710, DB sgw_nc_uat, character Nctester): NID, Jaffa, ScavDog and PRU each fired their assigned ability; 0 ability_launched rows with ability 592 across the session (NC-44). Presentation not verified | NC-40..44 | Run for server behaviour; see [w4-lab-results.md](w4-lab-results.md) |
