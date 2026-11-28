@@ -312,6 +312,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [deployables.md](gameplay/deployables.md) | Placed objects from "Deployable:" abilities: ground-point validation, lifetime, pulses, owner cleanup | Phase 0 |
 | [duel-system.md](gameplay/duel-system.md) | PvP duel requests, rules, resolution | Complete |
 | [npc-ai.md](gameplay/npc-ai.md) | NPC AI state machine, threat system, aggro, ability selection | Complete |
+| [npc-combat-references.md](gameplay/npc-combat-references.md) | The four NPC combat reference pipelines and how to add a combat profile | Complete |
 | [spawn-system.md](gameplay/spawn-system.md) | Spawn regions, spawn sets, population management, respawn timers | Complete |
 | [loot-system.md](gameplay/loot-system.md) | Loot generation algorithm, loot tables, eligibility rules | Complete |
 | [progression-system.md](gameplay/progression-system.md) | XP curves, leveling, stat growth, training points, applied science | Complete |
