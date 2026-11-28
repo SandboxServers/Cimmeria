@@ -176,9 +176,8 @@ pub(super) async fn npc_ai_fight(
     //   - `Some(id)` for the lowest-id off-cooldown ability regardless of
     //     reach when none is in reach, so the out-of-range arm below can
     //     walk the NPC in (or hold it, if stationary) rather than freeze.
-    //   - `Some(NPC_DEFAULT_ABILITY)` when the NPC has no known abilities
-    //     (misconfigured template — explicit fallback per the selector's
-    //     "don't wedge silently" rule).
+    //   - `None` when the NPC has no known abilities (D-NC1, NC-30: no
+    //     592 fallback; the NPC idles and warns).
     //   - `None` when every known ability is on cooldown.
     //
     // In the `None` case we keep the range/LOS logic running against the

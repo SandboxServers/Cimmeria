@@ -1662,6 +1662,11 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25504, 2813, 'd
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25510, 703, 'FocusDamage', '800');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25511, 703, 'HealthDamage', '80');
 
+-- npc-combat-reference hand-authored (25520-25529): NC-25
+-- RECONSTRUCTED (NC-25, D-NC11): effect 5310 desc '-100F -10H' (ability 559's tooltip) -> HealthDamage 10, FocusDamage 100; Giza effect 621 keeps 20/200 (nvps 16, 17)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25520, 5310, 'HealthDamage', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25521, 5310, 'FocusDamage', '100');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305

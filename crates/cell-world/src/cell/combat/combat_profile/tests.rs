@@ -125,7 +125,9 @@ fn first_report_is_true_once_per_template() {
     assert!(!first_report(0x7000_0102));
 }
 
+/// D-NC1 pinned: production runs `RequireWeaponEvidence`. Revert proof:
+/// setting the constant back to `Legacy` fails here.
 #[test]
-fn production_policy_is_legacy() {
-    assert_eq!(PLACEHOLDER_POLICY, PlaceholderPolicy::Legacy);
+fn production_policy_is_require_weapon_evidence() {
+    assert_eq!(PLACEHOLDER_POLICY, PlaceholderPolicy::RequireWeaponEvidence);
 }

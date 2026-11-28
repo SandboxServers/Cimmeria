@@ -62,6 +62,7 @@ mod tests {
     /// Sentinel template ids (R7), unique per test because the once-per-template
     /// set is process-wide.
     const PLACEHOLDER_ID: i32 = 0x7000_0205;
+    const HUMAN_ID: i32 = 0x7000_0206;
     const UNRESOLVED_ID: i32 = 0x7000_0202;
     const EXPLICIT_ID: i32 = 0x7000_0203;
 
@@ -123,13 +124,43 @@ mod tests {
             .collect()
     }
 
-    /// Spawn-path guard: a placeholder reports once, however many NPCs of
-    /// the template spawn.
+    /// Spawn-path guard: a template with no ability set and no weapon
+    /// evidence reports once, however many NPCs of the template spawn, and
+    /// no placeholder row is logged (D-NC1: no 592 fallback).
     #[test]
-    fn placeholder_profile_logs_once_per_template_through_spawn() {
+    fn unresolved_profile_logs_once_per_template_through_spawn() {
         let logs = LogCapture::install();
         let mut mgr = make_space_manager();
         let rec = record(PLACEHOLDER_ID, vec![]);
+
+        let first = mgr.allocate_npc_id();
+        mgr.spawn_npc_from_record(first, &rec).unwrap();
+        let rows = profile_rows(&logs, "combat_profile_unresolved");
+        assert_eq!(rows.len(), 1, "one unresolved row: {rows:#?}");
+        let row = &rows[0];
+        assert_eq!(row.level, Level::WARN);
+        assert!(row.has_field("template_id", &PLACEHOLDER_ID.to_string()));
+        assert!(row.has_field("template_name", "Sentinel Placeholder NPC"));
+        assert!(row.has_field("weapon_component", "none"));
+        assert!(profile_rows(&logs, "combat_profile_placeholder").is_empty());
+
+        let second = mgr.allocate_npc_id();
+        mgr.spawn_npc_from_record(second, &rec).unwrap();
+        assert_eq!(
+            profile_rows(&logs, "combat_profile_unresolved").len(),
+            1,
+            "a second spawn of the same template must log nothing"
+        );
+    }
+
+    /// Spawn-path guard: a `WP-Human.*` template with no ability set gets the
+    /// 592 placeholder and logs one INFO row, however many NPCs spawn.
+    #[test]
+    fn human_firearm_placeholder_logs_once_per_template_through_spawn() {
+        let logs = LogCapture::install();
+        let mut mgr = make_space_manager();
+        let mut rec = record(HUMAN_ID, vec![]);
+        rec.components = Some(vec!["WP-Human.WP_Pistol_01".to_string()]);
 
         let first = mgr.allocate_npc_id();
         mgr.spawn_npc_from_record(first, &rec).unwrap();
@@ -137,9 +168,10 @@ mod tests {
         assert_eq!(rows.len(), 1, "one placeholder row: {rows:#?}");
         let row = &rows[0];
         assert_eq!(row.level, Level::INFO);
-        assert!(row.has_field("template_id", &PLACEHOLDER_ID.to_string()));
-        assert!(row.has_field("template_name", "Sentinel Placeholder NPC"));
-        assert!(row.has_field("weapon_component", "none"));
+        assert!(row.has_field("template_id", &HUMAN_ID.to_string()));
+        assert!(row.has_field("weapon_component", "WP-Human.WP_Pistol_01"));
+        assert!(row.has_field("ability_id", "592"));
+        assert!(profile_rows(&logs, "combat_profile_unresolved").is_empty());
 
         let second = mgr.allocate_npc_id();
         mgr.spawn_npc_from_record(second, &rec).unwrap();

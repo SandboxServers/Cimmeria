@@ -26,8 +26,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
     // `ability_set_abilities`), the inner `array_agg` returns NULL and
     // COALESCE substitutes an empty Postgres array so Rust always sees
     // `Vec<i32>` (possibly empty), never `None`. Templates without an
-    // ability set fall back to NPC_DEFAULT_ABILITY in
-    // `spawn_npc_from_record_into`.
+    // ability set get 592 only with a `WP-Human.*` component (D-NC1,
+    // `combat_profile`, applied in `spawn_npc_from_record_into`).
     let rows = sqlx::query(
         "SELECT s.spawn_id, w.world AS world_name, s.x, s.y, s.z, s.heading, s.tag, \
                s.is_stationary, \

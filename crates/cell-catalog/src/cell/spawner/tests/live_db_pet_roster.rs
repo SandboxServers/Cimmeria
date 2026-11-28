@@ -198,7 +198,8 @@ mod live_db {
 
     /// The Jaffa and the Prime wear exactly the look they copy, the
     /// Lo'taur wears the Goa'uld male body in the full servant dress, and
-    /// every nameplate has text.
+    /// every nameplate has text. The WP- weapon component is not part of
+    /// the dress compared: NC-22 gave 159/160 a staff, the pets stay as they were.
     #[tokio::test]
     async fn roster_looks_and_names() {
         let pool = require_db_or_skip!();
@@ -211,7 +212,21 @@ mod live_db {
                     .get(&source)
                     .unwrap_or_else(|| panic!("template {source} is seeded"));
                 assert_eq!(t.body_set, s.body_set, "{} body set", pet.template);
-                assert_eq!(t.components, s.components, "{} components", pet.template);
+                // NC-22 (D-NC3): 159/160 now carry a RECONSTRUCTED staff component; the pets copy the dress, not the weapon.
+                let dress = |c: &Option<Vec<String>>| -> Option<Vec<String>> {
+                    c.as_ref().map(|v| {
+                        v.iter()
+                            .filter(|x| !x.starts_with("WP-"))
+                            .cloned()
+                            .collect()
+                    })
+                };
+                assert_eq!(
+                    dress(&t.components),
+                    dress(&s.components),
+                    "{} components",
+                    pet.template
+                );
                 assert_eq!(t.event_set_id, s.event_set_id, "{} anim set", pet.template);
             }
 

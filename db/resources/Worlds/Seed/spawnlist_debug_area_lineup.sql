@@ -184,8 +184,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13944, 324.00, 6.58, -937.00, 3.1416, 1300, 1484, 'DebugArea_VisualLineup_143', 'Visual NPC Lineup - Jaffa male', true);
 -- 1485 JaffaMale Template - D #155 BS_JaffaMale
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13945, 326.25, 6.58, -937.00, 3.1416, 1300, 1485, 'DebugArea_VisualLineup_155', 'Visual NPC Lineup - Jaffa male', true);
--- 1486 Praxis Jaffa Guard #160 BS_JaffaMale
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13946, 328.50, 6.80, -937.00, 3.1416, 1300, 1486, 'DebugArea_VisualLineup_160', 'Visual NPC Lineup - Jaffa male', true);
+-- 1486 Praxis Jaffa Guard #189 BS_JaffaMale
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13946, 328.50, 6.80, -937.00, 3.1416, 1300, 1486, 'DebugArea_VisualLineup_189', 'Visual NPC Lineup - Jaffa male', true);
 -- 1487 Petbe #163 BS_JaffaMale
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13947, 330.75, 6.58, -937.00, 3.1416, 1300, 1487, 'DebugArea_VisualLineup_163', 'Visual NPC Lineup - Jaffa male', true);
 -- 1488 Mala'c #200 BS_JaffaMale

@@ -48,9 +48,9 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover, aggro_radius) VALUES (1375, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 5, 0, 10, 7417, NULL, NULL, NULL, 'DebugArea Cover Rifleman', 'mob', NULL, NULL, NULL, NULL, 3, 'Bullet_Default', 2, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL, 30, true, 25);
 
 -- Z9 death and respawn test. 1376 is the lethal hostile: four of them stand
--- together, each firing 559 (200 Focus / 20 Health, focus-gated bleed) every
--- AI tick, which strips a fresh character's 1,570 Focus and 760 Health in five
--- AI ticks (about 10 s). Level 31 (1,750 HP) so a low-level character cannot win.
+-- together, each firing 559 (100 Focus / 10 Health since NC-25, focus-gated bleed) every
+-- AI tick, which strips a fresh character's 1,570 Focus and 760 Health in 9
+-- AI ticks (about 18 s). Level 31 (1,750 HP) so a low-level character cannot win.
 -- aggro_radius 10: a tester has to walk up to them, and the respawner 131 is
 -- 28 u away, so a respawned character is never pulled. Name "NID Operative"
 -- (the Harset level-31 SMG hostile's moniker), look of template 24.

@@ -168,13 +168,15 @@ fn spawn_record_with_ability_ids_skips_default_fallback() {
     );
 }
 
-/// Resolver wiring: a record whose `ability_ids` are empty spawns knowing
-/// exactly [592] (the Legacy placeholder, via `combat_profile`).
+/// Resolver wiring: a record whose `ability_ids` are empty and whose
+/// components carry a human firearm spawns knowing exactly [592] (the
+/// RequireWeaponEvidence placeholder, via `combat_profile`).
 #[test]
-fn spawn_record_with_empty_ability_ids_knows_exactly_592() {
+fn spawn_record_with_empty_ability_ids_and_human_firearm_knows_exactly_592() {
     let mut mgr = make_manager_with_worlds();
     let mut record = make_test_record("Agnos", Some("Placeholder"), "mob");
     record.template_id = 0x7000_0204;
+    record.components = Some(vec!["WP-Human.WP_Pistol_01".to_string()]);
     let npc_id = mgr.allocate_npc_id();
     mgr.spawn_npc_from_record(npc_id, &record).unwrap();
 
@@ -198,13 +200,11 @@ fn spawn_record_with_explicit_set_knows_exactly_that_set() {
     assert_eq!(known, vec![584, 710]);
 }
 
-/// A `SpawnRecord` with empty `ability_ids` (template has no
-/// `ability_set_id`, the LEFT JOIN produced no rows) falls back to
-/// `NPC_DEFAULT_ABILITY` so the AI tick has something to fire. Without
-/// this, the auto-converted templates with no ability set would spawn
-/// defenseless NPCs.
+/// A `SpawnRecord` with empty `ability_ids` and no weapon evidence (D-NC1)
+/// gets no placeholder: it spawns knowing nothing, so the AI idles and
+/// warns instead of firing 592.
 #[test]
-fn spawn_record_with_empty_ability_ids_falls_back_to_default() {
+fn spawn_record_with_empty_ability_ids_knows_no_ability() {
     let mut mgr = make_manager_with_worlds();
     let record = make_test_record("Agnos", Some("Unspeced"), "mob");
     assert!(record.ability_ids.is_empty(), "fixture must start empty");
@@ -214,14 +214,14 @@ fn spawn_record_with_empty_ability_ids_falls_back_to_default() {
 
     let npc = mgr.get_entity(npc_id).unwrap();
     assert!(
-        npc.abilities
+        !npc.abilities
             .has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY),
-        "empty ability_ids must fall back to NPC_DEFAULT_ABILITY",
+        "empty ability_ids with no weapon evidence must not fall back to 592",
     );
     assert_eq!(
         npc.abilities.known_count(),
-        1,
-        "fallback must seed exactly one ability (the default)",
+        0,
+        "an unresolved NPC must know no ability",
     );
 }
 

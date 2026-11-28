@@ -45,8 +45,8 @@ Re-scoped from the brief:
   repo already holds. Other builds are UNRESOLVED until someone supplies them.
 - "Cooked-data modifications": none are planned.
 - The placeholder removal is staged. The resolver lands first with no
-  behaviour change (`Legacy`). The flip to `RequireWeaponEvidence` comes after
-  the tests are made explicit and the references pass (D-NC1).
+  behaviour change (`Legacy`). The flip to `RequireWeaponEvidence` landed in NC-30
+  (D-NC1) after the tests were made explicit.
 - Elite Jaffa specials and the wider roster are out of scope. NC-34 writes
   only the follow-up spec.
 
@@ -91,12 +91,12 @@ because PR #822 changed only `abilities.event_set_id`.
 |---|---|---|---|
 | F1 | `NPC_DEFAULT_ABILITY = 592` is applied at spawn (`crates/cell-world/src/cell/space_manager/spawn.rs:314-325`, when `record.ability_ids` is empty) and at AI time (`crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:63-66`, when `known_count() == 0`). The code comment cites "the Python convention", so it is a Giza/Python placeholder, not CME behaviour. The raw `spawn_npc` primitive (`spawn.rs:37-39`) also adds it; it is mostly a test primitive | EARLIEST LEGACY DATA | NC-01, NC-10, NC-30 |
 | F2 | About 75 templates have no `ability_set_id` and are hostile or spawned in mission worlds. Removing the fallback outright would make them stop attacking, mission mobs included. About 40 test files use 592 as their fixture | CURRENT CIMMERIA IMPLEMENTATION | NC-15, NC-21a-c, NC-30 |
-| F3 | Already fixed, so no packet: the player-side 592 redirect (CS-07, OD-CS11); melee abilities firing at 30 m (`effective_max_range` uses `NPC_MELEE_RANGE`); multi-ability sets (H09); Jaffa sets 4 and 5 (H11); the ability-to-event-set links (#822, `docs/reverse-engineering/findings/ability-animation-links.md`) | CURRENT CIMMERIA IMPLEMENTATION | none |
-| F4 | NID 24: set 3 is 559 (event set 15, effect 621, `RangedPhysicalDamage`), with the `WP-Human.WP_SMG_1A` component, loot 2, `use_cover` true and assist 26. The 559 tooltip says -100F/-10H, but effect 621 executes 20H/200F (D-NC8). `weapon_item_id` 21 (SGHC 6 SMG) has no server consumer (D-NC6). NPCs have no ammo gate and no reload | CURRENT CIMMERIA IMPLEMENTATION | NC-11 |
-| F5 | Jaffa 159/160: set 4 (584 ranged, 710 melee), level 50, faction 1. They have no `WP-Jaffa` staff component, so the client shows no staff. Effect 736 (ability 710) has no script and no NVPs, so it is inert. The lowest-id rule picks 584 over 710 even in melee reach, so 710 fires only while 584 cools. Faction 1 means players cannot fight them | CURRENT CIMMERIA IMPLEMENTATION | NC-12, NC-20, NC-22 |
-| F6 | ScavDog 76 has no ability set, so it fires 592 Pistol Shot, a humanoid firearm. 1433 Mob Strike (effect 1717, inert like 736) and 983 Bite (effect 1092, no event set and no script) are unassigned. The 1433 → event set 300 link is a Tier-3 reconstruction. `mob_scav.fev` has five attack variants, said to be "referenced by mob notifies", but per-notify ownership is unverified | EARLIEST LEGACY DATA / UNRESOLVED | NC-05, NC-12, NC-13 |
+| F3 | Already fixed, so no packet: the player-side 592 redirect (CS-07, OD-CS11); melee abilities firing at 30 m (`effective_max_range` uses `NPC_MELEE_RANGE`); multi-ability sets (H09); Jaffa sets 4 and 5 (H11); the ability-to-event-set links (#822, `docs/reverse-engineering/findings/ability-animation-links.md`; the 1433 and 983 links are RECONSTRUCTED Tier-3 calls, ruling D1) | CURRENT CIMMERIA IMPLEMENTATION | none |
+| F4 | NID 24: set 3 is 559 (event set 15, effect 5310 since NC-25, `RangedPhysicalDamage`), with the `WP-Human.WP_SMG_1A` component, loot 2, `use_cover` true and assist 26. The 559 tooltip says -100F/-10H and effect 5310 executes 10H/100F (D-NC8, D-NC11, RECONSTRUCTED); Giza effect 621 (20H/200F) is kept unchanged and unused. `weapon_item_id` 21 (SGHC 6 SMG) has no server consumer (D-NC6). NPCs have no ammo gate and no reload | CURRENT CIMMERIA IMPLEMENTATION | NC-11 |
+| F5 | Jaffa 159/160: set 4 (584 ranged, 710 melee), level 50, faction 1. NC-22 added the `WP-Jaffa.WP_Staff_Plasma_4A` staff component in place (D-NC3, RECONSTRUCTED), so the client shows the staff. Effect 736 (ability 710) had no script and no NVPs; NC-12 gave it `MeleePhysicalDamage` and NVPs (RECONSTRUCTED). Inside `NPC_MELEE_RANGE` an NPC now takes its off-cooldown melee swing first (D-NC4, NC-20), so 710 fires at melee reach and 584 elsewhere. Faction 1 means players cannot fight them | CURRENT CIMMERIA IMPLEMENTATION | NC-12, NC-20, NC-22 |
+| F6 | ScavDog 76 had no ability set and fired 592 Pistol Shot, a humanoid firearm. NC-13 gives it set 6 = 1433 Mob Strike (RECONSTRUCTED, D-NC5), and NC-12 gave effect 1717 its damage (RECONSTRUCTED). 983 Bite (effect 1092, no event set and no script) stays unassigned. The 1433 and 983 → event set 300 links are PR #822 Tier-3 judgement calls (RECONSTRUCTED). `mob_scav.fev` has five variants of one `attack` event, and no notify in the package references them (NC-05) | EARLIEST LEGACY DATA / RECONSTRUCTED / UNRESOLVED | NC-05, NC-12, NC-13 |
 | F7 | PRU 4: set 2 is 221 Energy Shock (effect 264, `RangedEnergyDamage`, 16H/80F, event sets 802/803). The damage type may be forced to physical (NC-07) | CURRENT CIMMERIA IMPLEMENTATION | NC-07, NC-14 |
-| F8 | Templates 34 and 35 show a staff mesh but have no set, so under `Legacy` they fire a pistol. Other no-set templates with weapon components exist | CURRENT CIMMERIA IMPLEMENTATION | NC-15 |
+| F8 | Templates 34 and 35 show a staff mesh but have no set, so they fired a pistol under `Legacy` and idle since NC-30. Other no-set templates with weapon components exist | CURRENT CIMMERIA IMPLEMENTATION | NC-15 |
 | F9 | The Debug Area gallery (Z7) already holds 4, 24 and 76, but all of them are NEUTRAL (override 3) and there is no Jaffa. DA-04 template 1371 is a Praxis Jaffa with set 4 and the `WP-Jaffa.WP_Staff_Plasma_4A` staff, but it is faction 3, which players do not fight. No aggressive reference range exists yet | CURRENT CIMMERIA IMPLEMENTATION | NC-03 |
 | F10 | Runtime suspects to re-verify: NPC mitigation 0/0, damage type forced to `DT_PHYSICAL`, DoT death firing no `entity_death`, and NPC LOS and target validation | UNRESOLVED | NC-07 |
 | F11 | The client has no ability-keyed animation lookup, and the KIS packages are generic per mechanic. Presentation follows the event set (`event_sets_sequences` → `sequences.kismet_script_name`), so a correct event set is the server's whole lever | ORIGINAL CLIENT VERIFIED (ability-animation-links.md) | NC-04, NC-06 |
@@ -134,15 +134,18 @@ says yes. NC-05 upgrades or contradicts it later.
 
 | Id | Question | Recommendation | Status |
 |---|---|---|---|
-| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | Decided (owner, 2026-11-27): an NPC with no ability set idles and logs a warning, with no 592 fallback. NC-30 flips the policy |
+| D-NC1 | What does an NPC with no ability set do? | Staged. `Legacy` (592) ships first with once-per-template diagnostics. Then `RequireWeaponEvidence`: 592 only with a `WP-Human.*` component; otherwise hold fire and log a WARN. Flip it only after the NC-21 test fixups and the four references pass | Decided (owner, 2026-11-27): an NPC with no ability set idles and logs a warning, with no 592 fallback. NC-30 flipped the policy (code keeps 592 only for a template with a `WP-Human.*` component) |
 | D-NC2 | How to give 736 and 1717 their damage | Hand NVP rows 470-473 plus `MeleePhysicalDamage`, the #493 precedent (effect 656), labelled RECONSTRUCTED from each effect's own description. Do not widen the generator's player-only scope | Decided (owner, 2026-11-27): derive from the ability text, RECONSTRUCTED. Merged in #2089 |
-| D-NC3 | Staff on the real 159/160 | Clones (1380/1381) in the Debug Area now. Add `WP-Jaffa.WP_Staff_Plasma_4A` to 159/160 in place after the Jaffa reference passes, with lineup rows if their look changes. Keep their faction 1 | BlockedDecision (gates NC-22) |
+| D-NC3 | Staff on the real 159/160 | Clones (1380/1381) in the Debug Area now. Add `WP-Jaffa.WP_Staff_Plasma_4A` to 159/160 in place after the Jaffa reference passes, with lineup rows if their look changes. Keep their faction 1 | Decided (owner, 2026-11-27): yes, staff on 159/160, RECONSTRUCTED. NC-22 implements |
 | D-NC4 | Melee preference in reach | NPCs only: within `NPC_MELEE_RANGE`, an off-cooldown melee ability wins over ranged. Pets keep lowest-id | Decided (owner, 2026-11-27): yes, NPCs only |
 | D-NC5 | Give ScavDog 1433 Mob Strike before the client evidence? | Yes, as RECONSTRUCTED: new set 6 = {1433}. 983 Bite stays unassigned until NC-05 finds evidence | Decided (owner, 2026-11-27): yes, as RECONSTRUCTED |
-| D-NC6 | Make `weapon_item_id` load-bearing? | No. The `WP-*` visual component is the weapon evidence; `weapon_item_id` stays informational | BlockedDecision (contract assumes the recommendation) |
-| D-NC7 | Live-client UAT in the lab | Ask first, per run. Use Haiku lab-drivers at Z12, verified against the server log | BlockedDecision (gates W4) |
-| D-NC8 | 559's tooltip (-100F/-10H) against effect 621 (-200F/-20H) | No change. The effect row executes; record it as UNRESOLVED in the registry | BlockedDecision (record only) |
+| D-NC6 | Make `weapon_item_id` load-bearing? | No. The `WP-*` visual component is the weapon evidence; `weapon_item_id` stays informational | Decided (owner, 2026-11-27): `weapon_item_id` stays informational |
+| D-NC7 | Live-client UAT in the lab | Ask first, per run. Use Haiku lab-drivers at Z12, verified against the server log | Decided (owner, 2026-11-27): lab approved in principle, ask before each run |
+| D-NC8 | 559's tooltip (-100F/-10H) against effect 621 (-200F/-20H) | No change. The effect row executes; record it as UNRESOLVED in the registry | Decided (owner, 2026-11-27): follow the 559 tooltip, RECONSTRUCTED. Implemented by the D-NC11 split: ability 559 uses new effect 5310 (10H/100F); effect 621 is not rewritten and stays unchanged (NC-25) |
 | D-NC9 | NC-03 blocked: C3's spawns 14110-14129 belong to the DR-03b Armory (14110-14299, rows 14110-14116). Where does Z12 go? | Spawns 14300-14319 (14300-14304 used), footer floor 14319; templates 1380/1381 stand. Checked against `origin/main` 3a20a96a0: no spawnlist row from 14117 to 15799 and no doc reserves 14300+. The coder's 13700-13719 was rejected: it lies in DA-04's block, and `debug_area/reach.rs` `the_reach_guards_see_da04_rows` counts every 13600-13799 row against `spawnlist_debug_area_combat.sql` alone, so a separate reference file breaks it. C3, C4 and NC-03 are re-specced; re-dispatch NC-03 | Decided (architect ruling, 2026-11-27) |
+| D-NC10 | The 559 tooltip says `1 Ammo`, but the ability row has `required_ammo` 3 | No change in this campaign. NPCs have no ammo gate, so only players see it; leave it to an items or ammo campaign | Record only (2026-11-27): no change here; does not gate NC-25 |
+| D-NC11 | How does 559 follow its tooltip (D-NC8): rewrite effect 621 in place, or give 559 its own effect row? | Rewrite 621 in place: it is the same row and the same tooltip | Decided (owner, 2026-11-27): split. Ability 559 gets its own new effect row, 5310, with the tooltip's 10H/100F, RECONSTRUCTED; effect 621 stays unchanged. This replaces D-NC8's "effect 621 is rewritten". NC-25 implemented it (D-NC12 (a)). |
+| D-NC12 | The split does not isolate the NID. 559's damage resolves only through `abilities.effect_ids`, and no other ability uses 621, so repointing 559 to 5310 changes the NID Guard, all 29 templates on set 3 (the Z9 lethal squad 1376 among them) and the player SMG and assault-rifle auto attack (`items_event_sets` event 7) alike, and leaves 621 unused. Which outcome? | (a) Accept it: everything that fires 559 follows its own tooltip, which is also the tooltip players read on their weapon; NC-25 as written, with the Z9 re-measure. (b) NID only, through a new server-only ability on a new set for template 24: the new ability id reaches the client in `onEffectResults`, and unknown cooked ids have crashed it before (#938), so it needs a lab probe and a re-spec. (c) NID only, through a new server-side per-set effect override (559 unchanged on the wire): a schema column and resolver code, about two packets. (d) No change: 621 executes for everyone and O1 stays UNRESOLVED. Recommend (a) | Decided (a) (owner, 2026-11-27): everything that fires 559 follows its own tooltip, so repointing 559 to 5310 also changes the 29 set-3 templates, the Z9 squad and the player SMG and assault-rifle auto attack; NC-25 implements it with the Z9 re-measure (9 ticks). |
 
 ## Packets
 
@@ -167,11 +170,12 @@ says yes. NC-05 upgrades or contradicts it later.
 | NC-21c | 2 | packet-coder | Make 592 explicit in tests, other crates | NC-15 | Integrated (W2 PR) |
 | NC-23 | 2 | packet-coder | Regression: tutorial and CellBlock combat unchanged | NC-10, NC-12 | Integrated (W2 PR) |
 | NC-24 | 2 | packet-coder | Regression: Harset Jaffa and Jaffa pets | NC-12 | Integrated (W2 PR) |
-| NC-22 | 3 | packet-coder | Staff component on 159/160 in place | NC-12, NC-20, D-NC3 | BlockedDecision |
-| NC-30 | 3 | packet-coder | Flip to `RequireWeaponEvidence` | NC-10, NC-21a-c, NC-11..14, D-NC1 | BlockedDecision |
-| NC-31 | 3 | documentation-writer | Fill the evidence registry and the unresolved list | NC-02, NC-04..07, NC-11..14 | BlockedDependency |
-| NC-33 | 3 | packet-coder | Live UAT checklist and debug-area.toml rows | NC-03, NC-11..14 | BlockedDependency |
-| NC-34 | 3 | documentation-writer | Roster follow-up spec (Carnosaur, Horden, Rhinolion, AMBRat, Lenny, Unas) | NC-15, NC-31 | BlockedDependency |
+| NC-22 | 3 | packet-coder | Staff component on 159/160 in place | NC-12, NC-20, D-NC3 | Integrated (W3 PR) |
+| NC-30 | 3 | packet-coder | Flip to `RequireWeaponEvidence` | NC-10, NC-21a-c, NC-11..14, D-NC1 | Integrated (W3 PR) |
+| NC-31 | 3 | documentation-writer | Fill the evidence registry and the unresolved list | NC-02, NC-04..07, NC-11..14 | Integrated (W3 PR) |
+| NC-33 | 3 | packet-coder | Live UAT checklist and debug-area.toml rows | NC-03, NC-11..14 | Integrated (W3 PR) |
+| NC-34 | 3 | documentation-writer | Roster follow-up spec (Carnosaur, Horden, Rhinolion, AMBRat, Lenny, Unas) | NC-15, NC-31 | Integrated (W3 PR) |
+| NC-25 | 3 | packet-coder | Ability 559 uses its own tooltip effect 5310 (10H/100F, RECONSTRUCTED); effect 621 kept | NC-11, NC-31, NC-33, D-NC8, D-NC11, D-NC12 | Integrated (W3 PR) |
 | NC-40 | 4 | orchestrator + lab-driver | Live UAT: NID at Z12 | W3, D-NC7 | BlockedDecision |
 | NC-41 | 4 | orchestrator + lab-driver | Live UAT: Jaffa at Z12 | W3, D-NC7 | BlockedDecision |
 | NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | BlockedDecision |
@@ -194,6 +198,7 @@ W0  NC-01 ──┬─────────────► NC-10 ────
             └─► NC-20
     NC-02, NC-04, NC-05*, NC-06*, NC-07 ──► NC-31 ──► NC-34
     NC-11..14 ──► NC-33          NC-30 + NC-31 ──► NC-32 (W4, no lab)
+    NC-11 + NC-31 + NC-33 ──► NC-25 (D-NC8, D-NC11, D-NC12)
     W3 done ──► W4 NC-40..44 (D-NC7, lab, *client) ──► NC-50 ──► NC-51
     (* needs the owner's client copy)
 ```
@@ -205,7 +210,7 @@ W0  NC-01 ──┬─────────────► NC-10 ────
 | 0 | 7 (widest fan-out, with W2) | One PR per packet; file sets are disjoint | NC-01, NC-03, NC-07, NC-04, NC-02, NC-05, NC-06 |
 | 1 | 5 | One PR per packet | NC-10, NC-15, NC-11, NC-14, NC-12 |
 | 2 | 7 | One PR per packet | NC-21a, NC-21b, NC-21c, NC-13, NC-20, NC-23, NC-24 |
-| 3 | 5 | One PR per packet | NC-22, NC-30 (after a green workspace nextest), NC-31, NC-33, NC-34 |
+| 3 | 6 | One PR from the W3 integration branch (`nc-w3`); each packet merges into it with `merge-noff`; NC-25 is cut from it after NC-31 and NC-33 | NC-22, NC-31, NC-33, NC-34, NC-25, NC-30 last (after a green workspace nextest) |
 | 4 | 5 lab sessions + NC-32 | The lab sessions have no code; their rows are attested by one docs PR (`nc-uat`). NC-32 is its own PR | NC-32, then the attestation PR |
 | 5 | 2 | The campaign-review fix PR, then the close-out PR | NC-50, NC-51 |
 

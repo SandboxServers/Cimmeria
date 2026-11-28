@@ -69,7 +69,9 @@ mod live_db {
     use cimmeria_entity::stats::{FOCUS, HEALTH};
     use tokio::sync::mpsc;
 
-    use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db, SpawnRecord};
+    use crate::cell::spawner::{
+        load_ability_defs, load_effect_defs, load_spawn_templates, load_spawns_from_db, SpawnRecord,
+    };
     use crate::test_support::require_db_or_skip;
 
     /// The NID Guard's SMG damages a player 10 m away: with pools of 1000 and
@@ -120,5 +122,51 @@ mod live_db {
         let nid = ref_row(&rows, "DebugArea_Ref_NID");
         assert_eq!(nid.loot_table_id, Some(2), "the NID Guard's loot table");
         assert_eq!(nid.respawn_secs, Some(20), "the NID Guard respawns in 20 s");
+    }
+
+    /// Ability 559 (the NID's SMG auto attack) executes its own effect 5310, the
+    /// `-100F -10H` of its tooltip (RECONSTRUCTED, D-NC8, D-NC11). Giza effect
+    /// 621 (`-200F -20H`) is kept unchanged on purpose and no ability uses it.
+    /// Revert proofs: (i) `'{621}'` back in `abilities.sql` fails on
+    /// `effect_ids`; (ii) nvp 17 set to `'100'` (a rewrite of 621) fails on 621.
+    #[tokio::test]
+    async fn live_db_reference_nid_559_uses_reconstructed_effect_5310() {
+        let pool = require_db_or_skip!();
+        let desc = sqlx::query_scalar::<_, String>(
+            "SELECT description FROM resources.abilities WHERE ability_id = 559",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("ability 559 is seeded");
+        let lines: Vec<&str> = desc.lines().map(str::trim).collect();
+        let num = |suffix: char| -> i32 {
+            lines
+                .iter()
+                .find_map(|l| l.strip_prefix('-')?.strip_suffix(suffix))
+                .unwrap_or_else(|| panic!("559's tooltip has a -<n>{suffix} line"))
+                .parse()
+                .expect("a number")
+        };
+        let (focus, health) = (num('F'), num('H'));
+        assert_eq!((focus, health), (100, 10), "559's tooltip");
+
+        let abilities = load_ability_defs(&pool).await.expect("ability defs load");
+        let effects = load_effect_defs(&pool).await.expect("effect defs load");
+        assert_eq!(abilities[&559].effect_ids, vec![5310], "559 fires 5310");
+        let e = &effects[&5310];
+        assert_eq!(e.ability_id, 559, "effect 5310 belongs to 559");
+        assert_eq!(e.script_name.as_deref(), Some("RangedPhysicalDamage"));
+        assert_eq!(e.event_set_id, Some(289), "effect 5310's event set");
+        assert_eq!(e.param_i32("FocusDamage"), focus, "5310 Focus = tooltip -F");
+        assert_eq!(
+            e.param_i32("HealthDamage"),
+            health,
+            "5310 Health = tooltip -H"
+        );
+
+        let giza = &effects[&621];
+        assert_eq!(giza.param_i32("FocusDamage"), 200, "Giza 621 is kept");
+        assert_eq!(giza.param_i32("HealthDamage"), 20, "Giza 621 is kept");
+        assert_eq!(giza.script_name.as_deref(), Some("RangedPhysicalDamage"));
     }
 }

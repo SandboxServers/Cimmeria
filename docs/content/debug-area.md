@@ -134,7 +134,7 @@ x 396, neutral at x 412, and a hostile pen at x 436 to 440.
 | Friendly | Two factions the reaction table makes friendly to players: 1 (World Object, what every seeded friendly NPC uses) and 9 (Friendly_Ambient). | No | Never |
 | Neutral | Faction 7 (Neutral_Ambient): neutral to players. | No | Never |
 | Neutral, pinned | A faction-10 Jaffa with `aggression_override` 3 (NEUTRAL) on the spawn: passive, but damageable. | Yes | Only when shot |
-| Hostile pen | Three faction-10 templates as seeded elsewhere: 35 Ba'al's Jaffa (592 fallback) at the front, 24 NID Guard (SMG set 3) at the back, 78 Straegis Fighter (592 fallback). Hostile on sight. | Yes | On approach |
+| Hostile pen | Three faction-10 templates as seeded elsewhere: 35 Ba'al's Jaffa (no set, idles) at the front, 24 NID Guard (SMG set 3) at the back, 78 Straegis Fighter (no set, idles). Hostile on sight. | Yes | On approach |
 
 Players can damage only faction 10 (`player_may_attack_pve`), so the neutral
 row answers the plan's question "damageable or not" with **not**: a neutral
@@ -171,7 +171,7 @@ How to test:
 
 Zone Z5, west of the yard: a slope rising north from y 12 to y 22 at x 26 to
 28, the open ground east of it, and a flat dry basin at x 116. Every NPC is
-faction 10 and level 1, falls back to 592 Pistol Shot, and respawns after 30 s.
+faction 10 and level 1, has no ability set, so it idles with a combat_profile_unresolved warning (NC-30), and respawns after 30 s.
 
 | Station | Template | Behaviour | Tuning |
 |---|---|---|---|
@@ -366,8 +366,8 @@ Every gallery look also stands, friendly and passive, in
 character look.
 
 **Placed: 99 of the 101 hostile templates.** 25 carry an ability set (sets 1
-to 6: the drones, the NID and SGC humans, the named Jaffa, the Goa'uld and the ScavDog's Mob Strike); the other 74 fall back to 592 Pistol Shot, so a creature fires a
-pistol until it gets its own kit. 62 have no display name (no `name_id`, or an
+to 6: the drones, the NID and SGC humans, the named Jaffa, the Goa'uld and the ScavDog's Mob Strike); the other 74 have no set and no WP-Human component, so they idle and log combat_profile_unresolved (NC-30)
+until they get their own kit. 62 have no display name (no `name_id`, or an
 empty moniker such as 4's): their nameplate is blank, which is why each one
 has a tag.
 
@@ -462,13 +462,14 @@ Test' (438, 10.4, -916). Respawner **130** 'Debug Area Arrival'
 | 13641 | 1377 | `DebugArea_Respawn_Slow` | Cellblock Guard | (430, 10.03, -922) | Respawns 30 s after death |
 
 **The lethal squad.** Four level-31 NID Operatives (1,750 HP each) with the
-SMG set (559, 200 Focus / 20 Health a shot, every AI tick). They stand 28 to
+SMG set (559, 100 Focus / 10 Health a shot since NC-25, every AI tick; effect
+5310, RECONSTRUCTED from the tooltip, D-NC11). They stand 28 to
 31 m east of respawner 131, over a rise that blocks the line of sight from it.
 Their `aggro_radius` is 10, so you have to walk up to them. The closest one
 acquires you and the other three join through same-room assist. A fresh
-character (a Commando starts with 760 Health and 1,570 Focus) dies in five AI
-ticks, about 10 s, measured with the seeded abilities; the live-DB smoke
-allows seven. They respawn 60 s after
+character (a Commando starts with 760 Health and 1,570 Focus) dies in 9 AI
+ticks, about 18 s, measured with the seeded abilities; the live-DB smoke
+allows 13. They respawn 60 s after
 death and carry loot table 2.
 
 **The respawn-timer targets.** Two level-1 guards (250 HP) seeded NEUTRAL
@@ -735,7 +736,7 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
   - `live_db.rs` checks the same rows through the loaders: zones, the faction
     pairs against the reaction table, the cover in reach, and the respawn
     timers, and each template's aggro radius. It also runs two fights with the
-    seeded abilities: the squad kills a fresh character within seven AI ticks,
+    seeded abilities: the squad kills a fresh character within 13 AI ticks (it takes 9 with effect 5310),
     and the spectator pair's kill rolls no loot.
 - `crates/cell/src/cell/service/tests/npc_ai/debug_area_combat/reference/` (NC-03)
   pins the Z12 rows: the five tags on templates 24, 4, 76, 1380 and 1381 with a
@@ -783,8 +784,8 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   seen in this map.
 - DA-03: the patroller walks navmesh heights, which float up to about 2.6 m
   above the terrain on the slope between z -690 and -650.
-- DA-03: 74 gallery NPCs fall back to 592 Pistol Shot (NC-13 moved the ScavDog to set 6) and play the pistol
-  animation on creature and staff bodies; 62 have blank nameplates.
+- DA-03: 74 gallery NPCs have no ability set and idle (NC-30; NC-13 moved the ScavDog to set 6), so they play no attack
+  animation; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
 - DA-10: the Visual NPC Lineup's groups are within the 150 m AoI of the Z1
@@ -829,28 +830,28 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 |---:|---:|---|---|---:|---|---|
 | 13300 | 4 | Prisoner retrieval unit | (none) | 1 | 2 (PRU) | (55, -592) |
 | 13301 | 145 | Prisoner retrieval unit - Castle | Prisoner Retrieval Unit | 1 | 2 (PRU) | (59, -592) |
-| 13302 | 81 | Ancient Drone | Agnos Drone | 1 | 592 fallback | (63, -592) |
-| 13303 | 70 | BattleWalker | (none) | 1 | 592 fallback | (69, -592) |
+| 13302 | 81 | Ancient Drone | Agnos Drone | 1 | none (idles, warns) | (63, -592) |
+| 13303 | 70 | BattleWalker | (none) | 1 | none (idles, warns) | (69, -592) |
 
 #### Straegis
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13304 | 77 | Straegis Beacon | Straegis Beacon | 1 | 592 fallback | (79, -592) |
-| 13305 | 78 | Straegis Fighter | Straegis Fighter | 1 | 592 fallback | (83, -592) |
-| 13306 | 79 | Straegis Titan | Straegis Titan | 1 | 592 fallback | (89, -592) |
+| 13304 | 77 | Straegis Beacon | Straegis Beacon | 1 | none (idles, warns) | (79, -592) |
+| 13305 | 78 | Straegis Fighter | Straegis Fighter | 1 | none (idles, warns) | (83, -592) |
+| 13306 | 79 | Straegis Titan | Straegis Titan | 1 | none (idles, warns) | (89, -592) |
 
 #### Creatures
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13307 | 74 | AMBRat | Rat | 1 | 592 fallback | (99, -592) |
+| 13307 | 74 | AMBRat | Rat | 1 | none (idles, warns) | (99, -592) |
 | 13308 | 76 | ScavDog | (none) | 1 | 6 (Mob Strike) | (103, -592) |
-| 13309 | 73 | Lenny | Lenny | 1 | 592 fallback | (107, -592) |
-| 13310 | 72 | Horden | (none) | 1 | 592 fallback | (113, -592) |
-| 13311 | 75 | Rhinolion | (none) | 1 | 592 fallback | (121, -592) |
-| 13312 | 71 | Carnosaur | Carnosaur | 1 | 592 fallback | (129, -592) |
-| 13313 | 80 | Twilla Tree | Twilla Vines | 1 | 592 fallback | (137, -592) |
+| 13309 | 73 | Lenny | Lenny | 1 | none (idles, warns) | (107, -592) |
+| 13310 | 72 | Horden | (none) | 1 | none (idles, warns) | (113, -592) |
+| 13311 | 75 | Rhinolion | (none) | 1 | none (idles, warns) | (121, -592) |
+| 13312 | 71 | Carnosaur | Carnosaur | 1 | none (idles, warns) | (129, -592) |
+| 13313 | 80 | Twilla Tree | Twilla Vines | 1 | none (idles, warns) | (137, -592) |
 
 #### Humans: NID and SGC
 
@@ -877,8 +878,8 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13330 | 151 | Lucian - Blue Faction Scientist | Blue Faction Scientist | 1 | 592 fallback | (103, -612) |
-| 13331 | 152 | Lucian - Slum Dweller | Lucian Slum Dweller | 1 | 592 fallback | (107, -612) |
+| 13330 | 151 | Lucian - Blue Faction Scientist | Blue Faction Scientist | 1 | none (idles, warns) | (103, -612) |
+| 13331 | 152 | Lucian - Slum Dweller | Lucian Slum Dweller | 1 | none (idles, warns) | (107, -612) |
 
 #### Goa'uld
 
@@ -900,82 +901,82 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13338 | 34 | SGC Jaffa | Jaffa | 1 | 592 fallback | (147, -612) |
-| 13339 | 35 | SGC Ba'al Jaffa | Ba'al's Jaffa | 1 | 592 fallback | (151, -612) |
-| 13340 | 82 | Bull Jaffa | (none) | 1 | 592 fallback | (155, -612) |
-| 13341 | 83 | Asian Jaffa | (none) | 1 | 592 fallback | (159, -612) |
-| 13342 | 84 | Cat Jaffa | (none) | 1 | 592 fallback | (163, -612) |
-| 13343 | 85 | Cobra Jaffa | (none) | 1 | 592 fallback | (167, -612) |
-| 13344 | 86 | Croc Jaffa | (none) | 1 | 592 fallback | (171, -612) |
-| 13345 | 87 | Demon Jaffa | (none) | 1 | 592 fallback | (305, -592) |
-| 13346 | 88 | Dragon Jaffa | (none) | 1 | 592 fallback | (309, -592) |
-| 13347 | 89 | Eagle Jaffa | (none) | 1 | 592 fallback | (313, -592) |
-| 13348 | 90 | Falcon Jaffa | (none) | 1 | 592 fallback | (317, -592) |
-| 13349 | 91 | Horse Jaffa | (none) | 1 | 592 fallback | (321, -592) |
-| 13350 | 92 | Hyena Jaffa | (none) | 1 | 592 fallback | (329, -592) |
-| 13351 | 93 | Jackal Jaffa | (none) | 1 | 592 fallback | (333, -592) |
-| 13352 | 94 | Mayan Jaffa | (none) | 1 | 592 fallback | (357, -592) |
-| 13353 | 95 | Morrigan Jaffa | (none) | 1 | 592 fallback | (361, -592) |
-| 13354 | 96 | Naga Jaffa | (none) | 1 | 592 fallback | (365, -592) |
-| 13355 | 97 | Praxis Jaffa | (none) | 1 | 592 fallback | (369, -592) |
-| 13356 | 98 | Praxis Jaffa 2 | (none) | 1 | 592 fallback | (373, -592) |
-| 13357 | 99 | Ra Jaffa | (none) | 1 | 592 fallback | (381, -592) |
-| 13358 | 100 | Standard Jaffa | (none) | 1 | 592 fallback | (385, -592) |
-| 13359 | 101 | Savarog Jaffa | (none) | 1 | 592 fallback | (389, -592) |
-| 13360 | 102 | Tiki Jaffa | (none) | 1 | 592 fallback | (393, -592) |
-| 13361 | 111 | Viking Jaffa | (none) | 1 | 592 fallback | (397, -592) |
-| 13362 | 142 | Ra Jaffa 2 | (none) | 1 | 592 fallback | (401, -592) |
-| 13363 | 143 | Ra's Officer | Ra's Officer | 1 | 592 fallback | (405, -592) |
-| 13364 | 144 | Ra's Jaffa | Ra's Jaffa | 1 | 592 fallback | (409, -592) |
+| 13338 | 34 | SGC Jaffa | Jaffa | 1 | none (idles, warns) | (147, -612) |
+| 13339 | 35 | SGC Ba'al Jaffa | Ba'al's Jaffa | 1 | none (idles, warns) | (151, -612) |
+| 13340 | 82 | Bull Jaffa | (none) | 1 | none (idles, warns) | (155, -612) |
+| 13341 | 83 | Asian Jaffa | (none) | 1 | none (idles, warns) | (159, -612) |
+| 13342 | 84 | Cat Jaffa | (none) | 1 | none (idles, warns) | (163, -612) |
+| 13343 | 85 | Cobra Jaffa | (none) | 1 | none (idles, warns) | (167, -612) |
+| 13344 | 86 | Croc Jaffa | (none) | 1 | none (idles, warns) | (171, -612) |
+| 13345 | 87 | Demon Jaffa | (none) | 1 | none (idles, warns) | (305, -592) |
+| 13346 | 88 | Dragon Jaffa | (none) | 1 | none (idles, warns) | (309, -592) |
+| 13347 | 89 | Eagle Jaffa | (none) | 1 | none (idles, warns) | (313, -592) |
+| 13348 | 90 | Falcon Jaffa | (none) | 1 | none (idles, warns) | (317, -592) |
+| 13349 | 91 | Horse Jaffa | (none) | 1 | none (idles, warns) | (321, -592) |
+| 13350 | 92 | Hyena Jaffa | (none) | 1 | 592 (WP-Human) | (329, -592) |
+| 13351 | 93 | Jackal Jaffa | (none) | 1 | none (idles, warns) | (333, -592) |
+| 13352 | 94 | Mayan Jaffa | (none) | 1 | none (idles, warns) | (357, -592) |
+| 13353 | 95 | Morrigan Jaffa | (none) | 1 | none (idles, warns) | (361, -592) |
+| 13354 | 96 | Naga Jaffa | (none) | 1 | none (idles, warns) | (365, -592) |
+| 13355 | 97 | Praxis Jaffa | (none) | 1 | none (idles, warns) | (369, -592) |
+| 13356 | 98 | Praxis Jaffa 2 | (none) | 1 | none (idles, warns) | (373, -592) |
+| 13357 | 99 | Ra Jaffa | (none) | 1 | none (idles, warns) | (381, -592) |
+| 13358 | 100 | Standard Jaffa | (none) | 1 | none (idles, warns) | (385, -592) |
+| 13359 | 101 | Savarog Jaffa | (none) | 1 | none (idles, warns) | (389, -592) |
+| 13360 | 102 | Tiki Jaffa | (none) | 1 | none (idles, warns) | (393, -592) |
+| 13361 | 111 | Viking Jaffa | (none) | 1 | none (idles, warns) | (397, -592) |
+| 13362 | 142 | Ra Jaffa 2 | (none) | 1 | none (idles, warns) | (401, -592) |
+| 13363 | 143 | Ra's Officer | Ra's Officer | 1 | none (idles, warns) | (405, -592) |
+| 13364 | 144 | Ra's Jaffa | Ra's Jaffa | 1 | none (idles, warns) | (409, -592) |
 
 #### Jaffa, male, Unas armour
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13365 | 105 | Unas_1 | (none) | 1 | 592 fallback | (417, -592) |
-| 13366 | 106 | Unas_2 | (none) | 1 | 592 fallback | (421, -592) |
-| 13367 | 107 | Unas_3 | (none) | 1 | 592 fallback | (425, -592) |
-| 13368 | 108 | Unas_4 | (none) | 1 | 592 fallback | (429, -592) |
-| 13369 | 109 | Unas_5 | (none) | 1 | 592 fallback | (433, -592) |
-| 13370 | 110 | Unas_6 | (none) | 1 | 592 fallback | (437, -592) |
+| 13365 | 105 | Unas_1 | (none) | 1 | none (idles, warns) | (417, -592) |
+| 13366 | 106 | Unas_2 | (none) | 1 | none (idles, warns) | (421, -592) |
+| 13367 | 107 | Unas_3 | (none) | 1 | none (idles, warns) | (425, -592) |
+| 13368 | 108 | Unas_4 | (none) | 1 | none (idles, warns) | (429, -592) |
+| 13369 | 109 | Unas_5 | (none) | 1 | none (idles, warns) | (433, -592) |
+| 13370 | 110 | Unas_6 | (none) | 1 | none (idles, warns) | (437, -592) |
 
 #### Jaffa, female
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13371 | 112 | Asian Jaffa Female | (none) | 1 | 592 fallback | (445, -592) |
-| 13372 | 113 | Bull Jaffa Female | (none) | 1 | 592 fallback | (449, -592) |
-| 13373 | 114 | Cat Jaffa Female | (none) | 1 | 592 fallback | (453, -592) |
-| 13374 | 115 | Cobra Jaffa Female | (none) | 1 | 592 fallback | (457, -592) |
-| 13375 | 116 | Croc Jaffa Female | (none) | 1 | 592 fallback | (461, -592) |
-| 13376 | 117 | Demon Jaffa Female | (none) | 1 | 592 fallback | (465, -592) |
-| 13377 | 118 | Dragon Jaffa Female | (none) | 1 | 592 fallback | (305, -612) |
-| 13378 | 119 | Eagle Jaffa Female | (none) | 1 | 592 fallback | (309, -612) |
-| 13379 | 120 | Falcon Jaffa Female | (none) | 1 | 592 fallback | (313, -612) |
-| 13380 | 121 | Horse Jaffa Female | (none) | 1 | 592 fallback | (317, -612) |
-| 13381 | 122 | Hyena Jaffa Female | (none) | 1 | 592 fallback | (321, -612) |
-| 13382 | 123 | Jackal Jaffa Female | (none) | 1 | 592 fallback | (325, -612) |
-| 13383 | 124 | Mayan Jaffa Female | (none) | 1 | 592 fallback | (329, -612) |
-| 13384 | 125 | Morrigan Jaffa Female | (none) | 1 | 592 fallback | (333, -612) |
-| 13385 | 126 | Naga Jaffa Female | (none) | 1 | 592 fallback | (337, -612) |
-| 13386 | 127 | Praxis Jaffa 2 Female | (none) | 1 | 592 fallback | (341, -612) |
-| 13387 | 128 | Praxis Jaffa 1 Female | (none) | 1 | 592 fallback | (345, -612) |
-| 13388 | 129 | Standard Jaffa Female | (none) | 1 | 592 fallback | (349, -612) |
-| 13389 | 130 | Svarog Jaffa Female | (none) | 1 | 592 fallback | (353, -612) |
-| 13390 | 131 | Tiki Jaffa Female | (none) | 1 | 592 fallback | (357, -612) |
-| 13391 | 138 | Viking Jaffa Female | (none) | 1 | 592 fallback | (361, -612) |
-| 13392 | 139 | Clothed Jaffa Female 1 | (none) | 1 | 592 fallback | (365, -612) |
+| 13371 | 112 | Asian Jaffa Female | (none) | 1 | none (idles, warns) | (445, -592) |
+| 13372 | 113 | Bull Jaffa Female | (none) | 1 | none (idles, warns) | (449, -592) |
+| 13373 | 114 | Cat Jaffa Female | (none) | 1 | none (idles, warns) | (453, -592) |
+| 13374 | 115 | Cobra Jaffa Female | (none) | 1 | none (idles, warns) | (457, -592) |
+| 13375 | 116 | Croc Jaffa Female | (none) | 1 | none (idles, warns) | (461, -592) |
+| 13376 | 117 | Demon Jaffa Female | (none) | 1 | none (idles, warns) | (465, -592) |
+| 13377 | 118 | Dragon Jaffa Female | (none) | 1 | none (idles, warns) | (305, -612) |
+| 13378 | 119 | Eagle Jaffa Female | (none) | 1 | none (idles, warns) | (309, -612) |
+| 13379 | 120 | Falcon Jaffa Female | (none) | 1 | none (idles, warns) | (313, -612) |
+| 13380 | 121 | Horse Jaffa Female | (none) | 1 | none (idles, warns) | (317, -612) |
+| 13381 | 122 | Hyena Jaffa Female | (none) | 1 | none (idles, warns) | (321, -612) |
+| 13382 | 123 | Jackal Jaffa Female | (none) | 1 | none (idles, warns) | (325, -612) |
+| 13383 | 124 | Mayan Jaffa Female | (none) | 1 | none (idles, warns) | (329, -612) |
+| 13384 | 125 | Morrigan Jaffa Female | (none) | 1 | none (idles, warns) | (333, -612) |
+| 13385 | 126 | Naga Jaffa Female | (none) | 1 | none (idles, warns) | (337, -612) |
+| 13386 | 127 | Praxis Jaffa 2 Female | (none) | 1 | none (idles, warns) | (341, -612) |
+| 13387 | 128 | Praxis Jaffa 1 Female | (none) | 1 | none (idles, warns) | (345, -612) |
+| 13388 | 129 | Standard Jaffa Female | (none) | 1 | none (idles, warns) | (349, -612) |
+| 13389 | 130 | Svarog Jaffa Female | (none) | 1 | none (idles, warns) | (353, -612) |
+| 13390 | 131 | Tiki Jaffa Female | (none) | 1 | none (idles, warns) | (357, -612) |
+| 13391 | 138 | Viking Jaffa Female | (none) | 1 | none (idles, warns) | (361, -612) |
+| 13392 | 139 | Clothed Jaffa Female 1 | (none) | 1 | none (idles, warns) | (365, -612) |
 
 #### Jaffa, female, Unas armour
 
 | Spawn | Template | Template name | Name shown | Level | Ability set | Position (x, z) |
 |---:|---:|---|---|---:|---|---|
-| 13393 | 132 | Unas 1 Female | (none) | 1 | 592 fallback | (373, -612) |
-| 13394 | 133 | Unas 2 Female | (none) | 1 | 592 fallback | (377, -612) |
-| 13395 | 134 | Unas 3 Female | (none) | 1 | 592 fallback | (381, -612) |
-| 13396 | 135 | Unas 4 Female | (none) | 1 | 592 fallback | (385, -612) |
-| 13397 | 136 | Unas 5 Female | (none) | 1 | 592 fallback | (389, -612) |
-| 13398 | 137 | Unas 6 Female | (none) | 1 | 592 fallback | (393, -612) |
+| 13393 | 132 | Unas 1 Female | (none) | 1 | none (idles, warns) | (373, -612) |
+| 13394 | 133 | Unas 2 Female | (none) | 1 | none (idles, warns) | (377, -612) |
+| 13395 | 134 | Unas 3 Female | (none) | 1 | none (idles, warns) | (381, -612) |
+| 13396 | 135 | Unas 4 Female | (none) | 1 | none (idles, warns) | (385, -612) |
+| 13397 | 136 | Unas 5 Female | (none) | 1 | none (idles, warns) | (389, -612) |
+| 13398 | 137 | Unas 6 Female | (none) | 1 | none (idles, warns) | (393, -612) |
 
 ## Services plaza and dummies
 
@@ -1933,7 +1934,7 @@ colour or skin tint, which the lineup sends (see
 | 13927 | 1467 | Mayan Jaffa #94 BS_JaffaMale | N5 (317.75, -914) | yes, sent | 94 |
 | 13928 | 1468 | Morrigan Jaffa #95 BS_JaffaMale | N5 (320, -914) | yes, sent | 95 |
 | 13929 | 1469 | Naga Jaffa #96 BS_JaffaMale | N5 (322.25, -914) | none | 96 |
-| 13930 | 1470 | Praxis Jaffa #97 BS_JaffaMale | N5 (324.5, -914) | none | 97, 159, 352 |
+| 13930 | 1470 | Praxis Jaffa #97 BS_JaffaMale | N5 (324.5, -914) | none | 97, 352 |
 | 13931 | 1471 | Praxis Jaffa 2 #98 BS_JaffaMale | N5 (326.75, -914) | none | 98 |
 | 13932 | 1472 | Ra Jaffa #99 BS_JaffaMale | N5 (329, -914) | none | 99, 144 |
 | 13933 | 1473 | Standard Jaffa #100 BS_JaffaMale | N5 (331.25, -914) | none | 100, 1333, 1340 |
@@ -1949,15 +1950,15 @@ colour or skin tint, which the lineup sends (see
 | 13943 | 1483 | Ra Jaffa 2 #142 BS_JaffaMale | S1 (321.75, -937) | none | 142 |
 | 13944 | 1484 | Ra's Officer #143 BS_JaffaMale | S1 (324, -937) | none | 143 |
 | 13945 | 1485 | JaffaMale Template - D #155 BS_JaffaMale | S1 (326.25, -937) | yes, sent | 155 |
-| 13946 | 1486 | Praxis Jaffa Guard #160 BS_JaffaMale | S1 (328.5, -937) | none | 160, 189, 351 |
+| 13946 | 1486 | Praxis Jaffa Guard #189 BS_JaffaMale | S1 (328.5, -937) | none | 189, 351 |
 | 13947 | 1487 | Petbe #163 BS_JaffaMale | S1 (330.75, -937) | yes, sent | 163 |
-| 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | none | 200, 201, 209 |
+| 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | none | 159, 200, 201, 209 |
 | 13949 | 1489 | Bra'hin #202 BS_JaffaMale | S1 (335.25, -937) | none | 202 |
 | 13950 | 1490 | Ra's Jaffa #203 BS_JaffaMale | S1 (337.5, -937) | none | 203, 204, 205, 1406 |
 | 13951 | 1491 | Angry Jaffa #206 BS_JaffaMale | S2 (316, -942) | none | 206, 207, 208 |
 | 13952 | 1492 | Petbe #221 BS_JaffaMale | S2 (318.25, -942) | yes, sent | 221 |
 | 13953 | 1493 | Jaffa #1310 BS_JaffaMale | S2 (320.5, -942) | none | 1310, 1311, 1312, 1313 |
-| 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | none | 1371 |
+| 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | none | 160, 1371 |
 | 13955 | 1495 | (no template) BS_RaJaff | S2 (325, -942) | none | none |
 
 #### Jaffa, female (30)

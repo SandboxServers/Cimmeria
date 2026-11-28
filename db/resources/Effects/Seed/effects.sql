@@ -7820,6 +7820,11 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2907, 2134, 0, 'test', 0, 533, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Add the mini game BC', 0, NULL, '');
 
+-- RECONSTRUCTED (NC-25, D-NC8/D-NC11): effect 5310 is ability 559's tooltip '-100F -10H'; Giza effect 621 ('-200F -20H') is kept unchanged
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5310, 559, 0, 'Single Target
+-100F 
+-10H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'AW Auto Attack Damage', 0, 289, 'RangedPhysicalDamage');
+
 --
 -- TOC entry 3314 (class 0 OID 0)
 -- Dependencies: 314

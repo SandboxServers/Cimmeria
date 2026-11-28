@@ -5248,11 +5248,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 (Cannot move until warmup is finished)
 -350 F
 -35 H', 'ABILITY_TYPE_DD', 2, 5, 'set:AbilityIcons001 image:Buff_Aim', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1.5, '{2254}', '{1470900795,3175425141,3942340794}', 1033, 6, NULL, '{3175425141}');
-
+-- RECONSTRUCTED (NC-25, D-NC11): effect_ids 621 -> 5310, the effect that follows this tooltip; Giza effect 621 is kept unchanged
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (559, 'Automatic Weapon Auto Attack', 'Ranged Single Target Attack
 -100F
 -10H
-1 Ammo', 'ABILITY_TYPE_DD', 1.5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{621}', '{3175425141}', 15, 3, '{CAS_POSITION_FRONT}', '{3175425141}');
+1 Ammo', 'ABILITY_TYPE_DD', 1.5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{5310}', '{3175425141}', 15, 3, '{CAS_POSITION_FRONT}', '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1356, 'Evisceration', 'Melee Attack w/DOT
 -300F /-30H

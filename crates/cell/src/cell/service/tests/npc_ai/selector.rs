@@ -1,6 +1,6 @@
 //! `choose_npc_ability` selector tests — three-bucket selection across
-//! cooldown gating, all-cooling hold-fire, empty-bucket fallback, and
-//! the ammo-bearing ability case.
+//! cooldown gating, all-cooling hold-fire, empty-bucket hold-fire (no 592
+//! fallback under D-NC1), and the ammo-bearing ability case.
 
 use super::make_aggression_fixture;
 
@@ -72,10 +72,10 @@ async fn selector_returns_none_when_all_cooling() {
     assert_eq!(chosen, None, "all cooling → hold fire");
 }
 
-/// Selector: NPC with no abilities at all (misconfigured template) falls
-/// back to `NPC_DEFAULT_ABILITY` so the tick never wedges silently.
+/// Selector: NPC with no abilities at all (misconfigured template) holds
+/// fire. D-NC1: there is no 592 fallback, so the tick idles and warns.
 #[tokio::test]
-async fn selector_falls_back_to_default_when_no_abilities() {
+async fn selector_returns_none_when_no_abilities() {
     let mut mgr = make_aggression_fixture(200_006, 10, 1, [5.0, 0.0, 0.0]);
     if let Some(npc) = mgr.get_entity_mut(200_006) {
         npc.abilities
@@ -83,11 +83,7 @@ async fn selector_falls_back_to_default_when_no_abilities() {
     }
 
     let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_006, &mgr);
-    assert_eq!(
-        chosen,
-        Some(crate::cell::combat::NPC_DEFAULT_ABILITY),
-        "empty bucket → fallback to NPC_DEFAULT_ABILITY",
-    );
+    assert_eq!(chosen, None, "empty bucket → hold fire, no 592 fallback");
 }
 
 /// Selector: ability with `required_ammo > 0` is still picked — NPCs have
