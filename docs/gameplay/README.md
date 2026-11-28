@@ -27,6 +27,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Inventory](#inventory) | IM | SGWInventoryManager | `cell/cell_methods/inventory/`, `base/world_entry/methods/inventory/` | HIGH |
 | [Missions](#missions) | IM | Missionary | `cell/missions/` | HIGH |
 | [NPC AI](#npc-ai) | IM | SGWMob (direct) | `cell/service/npc_ai/` | HIGH |
+| [NPC combat references](npc-combat-references.md) | IM | SGWMob (direct) | `cell/service/npc_ai/` | HIGH |
 | [Spawn System](#spawn-system) | IM | SGWSpawnRegion | `cell/spawner/` | HIGH |
 | [Loot](#loot) | IM | Lootable | `cell/abilities/loot_drop.rs` | HIGH |
 | [Death & Respawn](#death--respawn) | IM | SGWCombatant / SGWPlayerRespawner | `cell/abilities/death.rs`, `cell/service/ticks/npc_respawn/` | HIGH |

@@ -44,10 +44,10 @@ a difference from 10 Health is a new finding, not a presentation fault.
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
 | N1 (NC-U1) | Stand 5 m off it at 95 5.8 -860 and draw its fire with your Pistol Shot | It acquires you and fires short SMG bursts from the muzzle, with a flash or tracer and the SMG sound | `npc_ai.aggro` acquired with tag `DebugArea_Ref_NID`; the ability 559 use | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N2 (NC-U1) | Hit it so it takes cover | It steps behind the cover node and keeps firing from there | `use_cover` in the npc log; the cover node chosen | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| N2 (NC-U1) | Hit it so it takes cover | It steps behind the cover node and keeps firing from there | `npc_ai` decision `move_to_cover` or `stay_in_cover`; a `cover.selection` row with `picked` and the node chosen | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 | N3 | Read your Health after one burst | The health bar drops by the burst's damage | The damage number in the combat log: 10 H, from effect 5310 (the 559 tooltip, D-NC8, the expected value); effect 621 is unchanged and no longer used by 559, so record the observed value; a difference from 10 H is a new finding (O1 is closed by NC-25) | [ ] pass [ ] fail | RECONSTRUCTED (D-NC8) |
 | N4 (NC-U1) | Kill it | It falls, leaves loot from table 2 you can pick up | Loot roll for table 2 in the server log; no loot from the wrong table | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| N5 (NC-U1) | Wait about 20 s after the kill | It stands again at spawn 14300 | `spawner.npc_respawn` with `respawn_secs` 20 for template 24 | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| N5 (NC-U1) | Wait about 20 s after the kill | It stands again at spawn 14300 | `respawn_scheduled` with `respawn_secs` 20 for template 24 | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 
 ## Block 2: Praxis Jaffa Guard (template 1380, spawn 14303) and Lieutenant (1381, spawn 14304)
 
@@ -62,7 +62,7 @@ melee damage rides effect 736 (NC-12, hand NVP rows 470 and 471).
 | J1 (NC-U2) | Stand 15 m off the guard at 55 5.8 -890 and target it | The serpent staff is visible in its hand, it raises it and a ranged bolt flies at you with its sound | Ability 584 used by `DebugArea_Ref_JaffaGuard` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 | J2 (NC-U3) | Walk to 2 m (42 5.8 -890) and wait | It swings the staff (ability 710): staff arc and sound, your Health drops | Ability 710 use; melee damage from effect 736 (NC-12) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED (swing and sound); RECONSTRUCTED (D-NC2) for the damage number |
 | J3 (NC-U3) | Walk back out to about 8 m | It stops swinging and returns to the bolt | The ability choice flips back to 584 once you are out of reach (NC-20) | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
-| J4 | Repeat J1 on the lieutenant at spawn 14304 (40 5.25 -900) | The lieutenant shows the same staff and bolt, beside the guard | Ability 584 from `DebugArea_Ref_JaffaLieutenant` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
+| J4 | Repeat J1 on the lieutenant at spawn 14304 (stand at 55 5.8 -900, 15 m off; 40 5.25 -900 is its own spawn) | The lieutenant shows the same staff and bolt, beside the guard | Ability 584 from `DebugArea_Ref_JaffaLieutenant` | [ ] pass [ ] fail | ORIGINAL CLIENT VERIFIED |
 
 ## Block 3: ScavDog (template 76, spawn 14302, set 6 = 1433)
 

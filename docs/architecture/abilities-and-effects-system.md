@@ -278,6 +278,7 @@ These were considered and deliberately deferred:
 
 ## Cross-references
 
+- [`npc-combat-references.md`](../gameplay/npc-combat-references.md) — the four NPC combat pipelines and how to add a profile
 - [`state-flag-conventions.md`](state-flag-conventions.md) — the refcount discipline that Stun reuses
 - [`state-field-bits.md`](state-field-bits.md) — the `BSF_*` bit catalog
 - [`negative-logging-convention.md`](negative-logging-convention.md) — the observability discipline applied across the effect dispatcher
