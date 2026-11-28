@@ -366,7 +366,7 @@ Every gallery look also stands, friendly and passive, in
 character look.
 
 **Placed: 99 of the 101 hostile templates.** 25 carry an ability set (sets 1
-to 6: the drones, the NID and SGC humans, the named Jaffa, the Goa'uld and the ScavDog's Mob Strike); the other 73 have no set and no WP-Human component, so they idle and log combat_profile_unresolved (NC-30; template 92 Hyena Jaffa carries WP_HandToHand_1A, matches the `WP-Human.` prefix, and still fires 592)
+to 6: the drones, the NID and SGC humans, the named Jaffa, the Goa'uld and the ScavDog's Mob Strike); the other 74 have no set and no human firearm component, so they idle and log combat_profile_unresolved (NC-30, narrowed to firearms by NC-50b and D-NC13: template 92 Hyena Jaffa carries only WP_HandToHand_1A, a melee weapon, so it idles and no gallery NPC fires 592)
 until they get their own kit. 62 have no display name (no `name_id`, or an
 empty moniker such as 4's): their nameplate is blank, which is why each one
 has a tag.
@@ -783,7 +783,7 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   seen in this map.
 - DA-03: the patroller walks navmesh heights, which float up to about 2.6 m
   above the terrain on the slope between z -690 and -650.
-- DA-03: 73 gallery NPCs have no ability set and idle (NC-30; NC-13 moved the ScavDog to set 6; template 92 Hyena Jaffa carries WP_HandToHand_1A, matches the `WP-Human.` prefix, and still fires 592), so they play no attack
+- DA-03: 74 gallery NPCs have no ability set and idle (NC-30; NC-13 moved the ScavDog to set 6; NC-50b: template 92 Hyena Jaffa carries only WP_HandToHand_1A, a melee weapon, so it idles too), so they play no attack
   animation; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
@@ -912,7 +912,7 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
 | 13347 | 89 | Eagle Jaffa | (none) | 1 | none (idles, warns) | (313, -592) |
 | 13348 | 90 | Falcon Jaffa | (none) | 1 | none (idles, warns) | (317, -592) |
 | 13349 | 91 | Horse Jaffa | (none) | 1 | none (idles, warns) | (321, -592) |
-| 13350 | 92 | Hyena Jaffa | (none) | 1 | 592 (WP-Human) | (329, -592) |
+| 13350 | 92 | Hyena Jaffa | (none) | 1 | none (idles, warns) | (329, -592) |
 | 13351 | 93 | Jackal Jaffa | (none) | 1 | none (idles, warns) | (333, -592) |
 | 13352 | 94 | Mayan Jaffa | (none) | 1 | none (idles, warns) | (357, -592) |
 | 13353 | 95 | Morrigan Jaffa | (none) | 1 | none (idles, warns) | (361, -592) |

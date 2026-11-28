@@ -14,7 +14,7 @@ use super::faction_reaction::reaction;
 /// Default NPC attack ability ID: "Pistol Shot" (ability 592, ranged DD).
 /// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack. Granted
 /// at spawn only to an NPC whose template names no ability set and carries a
-/// `WP-Human.*` component (D-NC1, NC-30); the ability selector no longer
+/// human firearm component (D-NC1, NC-30; D-NC13, NC-50b); the ability selector no longer
 /// falls back to it. Re-exported as `cell::combat::NPC_DEFAULT_ABILITY`.
 pub const NPC_DEFAULT_ABILITY: i32 = 592;
 

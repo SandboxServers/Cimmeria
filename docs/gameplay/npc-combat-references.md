@@ -35,13 +35,28 @@ Reconstructed values stay RECONSTRUCTED until a client record names them.
 - **Resolver.** `resolve_npc_combat_profile`
   (`crates/cell-world/src/cell/combat/combat_profile/mod.rs`) turns a template
   into a profile. `PLACEHOLDER_POLICY` is `RequireWeaponEvidence` (NC-30,
-  D-NC1): a template with no set earns Pistol Shot (592) only through a
-  `WP-Human.` component. Every other set-less template idles and logs
+  D-NC1, narrowed by D-NC13 in NC-50b): a template with no set earns Pistol
+  Shot (592) only through a human firearm component, one whose name starts
+  with a `HUMAN_FIREARM_PREFIXES` entry (`WP-Human.WP_Pistol_`, `WP_SMG_`,
+  `WP_AR_`, `WP_LMG_`, `WP_HMG_`, `WP_Rifle_`, `WP_Shotgun_`). A melee human
+  (`WP-Human.WP_HandToHand_1A`) or a deployable part earns nothing. Every
+  other set-less template idles and logs
   `combat_profile_unresolved`. A template granted 592 logs
   `combat_profile_placeholder` instead. Both rows carry the template name
   next to the id.
-- **Selection.** `choose_npc_ability` walks the set in ascending id order.
-  Inside `NPC_MELEE_RANGE` an off-cooldown melee ability goes first (NC-20).
+- **Selection.** `choose_npc_ability` walks the set in ascending id order and
+  takes the first off-cooldown ability, so the lowest id is the primary attack
+  and the rest are fallbacks (`ability_select.rs`). The Rust selector adds a
+  reach gate the original never had. A melee ability (`is_ranged = false`) is
+  selectable only inside `NPC_MELEE_RANGE` (3 m): this is the TODO above
+  `classifyHostileAbility`'s `return ABILITY_Usable`, implemented as
+  `choose_npc_ability_within_reach`. Without it a melee auto-attack resolves
+  to the 30 m ranged default, because `abilities.max_range` is the `0`
+  sentinel on every auto-attack. When nothing is in reach the unfiltered pick is
+  returned rather than `None`, so a melee-only NPC chases and swings instead of
+  freezing. Inside reach an off-cooldown melee ability goes first (NC-20): a Jaffa
+  at 2 m swings 710, not 584, and a Goa'uld (set 5) at 2 m swings 711. Pets (D-NC4)
+  keep the lowest-id walk.
 - **Presentation.** `abilities.event_set_id` is the server's whole lever; the
   client has no ability-keyed lookup. See the
   [presentation chain](../analysis/npc-combat-reference/presentation-chain.md).
@@ -57,7 +72,7 @@ that the policy allows.
 |---|---|---|---|---|
 | non-empty | any | any | the set, in order | `ExplicitSet` |
 | empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
-| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | a human firearm component (`HUMAN_FIREARM_PREFIXES`) | `[592]` | `LegacyPlaceholder` |
 | empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
 
 592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
@@ -76,7 +91,7 @@ id per process:
 An explicit set logs nothing. In the AI, an NPC that knows no ability gets
 no fallback: `placeholder_ability(policy)` returns 592 under `Legacy` and
 `None` under `RequireWeaponEvidence`, so the NPC idles (D-NC1). The 592 for a
-`WP-Human.*` template comes from spawn resolution, not from the AI.
+firearm template comes from spawn resolution, not from the AI.
 
 ## The four pipelines
 

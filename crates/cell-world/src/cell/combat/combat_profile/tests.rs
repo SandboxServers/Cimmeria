@@ -76,6 +76,48 @@ fn human_prefix_needs_the_dot() {
     assert_eq!(p.source, CombatProfileSource::Unresolved);
 }
 
+/// NC-50b (D-NC13): a melee human is not a firearm. Templates 28, 92, 1415 and
+/// 1465 carry only `WP-Human.WP_HandToHand_1A`, so they must idle. Revert
+/// proof: restoring the `WP-Human.` prefix makes this test fail.
+#[test]
+fn hand_to_hand_human_gets_no_placeholder_under_require_weapon_evidence() {
+    let comps = [
+        s("BS_HumanMale.BS_HM_Torso_00"),
+        s("WP-Human.WP_HandToHand_1A"),
+    ];
+    let p = resolve_npc_combat_profile(&[], Some(&comps), PlaceholderPolicy::RequireWeaponEvidence);
+    assert!(p.abilities.is_empty());
+    assert_eq!(p.source, CombatProfileSource::Unresolved);
+    assert_eq!(
+        p.weapon_evidence,
+        WeaponEvidence::Component("WP-Human.WP_HandToHand_1A".to_string())
+    );
+    assert_eq!(
+        placeholder_ability(PlaceholderPolicy::RequireWeaponEvidence),
+        None
+    );
+}
+
+/// NC-50b (D-NC13): every firearm class in `HUMAN_FIREARM_PREFIXES` still earns
+/// the placeholder, pistol and SMG included. Revert proof: a melee-only
+/// narrowing that drops firearms fails here.
+#[test]
+fn human_firearms_still_earn_placeholder_under_require_weapon_evidence() {
+    for weapon in [
+        "WP-Human.WP_Pistol_1A",
+        "WP-Human.WP_SMG_1A",
+        "WP-Human.WP_Rifle_5D",
+        "WP-Human.WP_Shotgun_1A",
+        "WP-Human.WP_HMG_1A",
+    ] {
+        let comps = [s(weapon)];
+        let p =
+            resolve_npc_combat_profile(&[], Some(&comps), PlaceholderPolicy::RequireWeaponEvidence);
+        assert_eq!(p.abilities, vec![NPC_DEFAULT_ABILITY], "{weapon}");
+        assert_eq!(p.source, CombatProfileSource::LegacyPlaceholder, "{weapon}");
+    }
+}
+
 #[test]
 fn no_weapon_evidence_is_unresolved_under_require_weapon_evidence() {
     let none = resolve_npc_combat_profile(&[], None, PlaceholderPolicy::RequireWeaponEvidence);

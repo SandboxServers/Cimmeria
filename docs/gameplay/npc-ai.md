@@ -330,28 +330,10 @@ weighting/rand here.` directly above that line, so lowest-id is a Cimmeria
 convention rather than a divergence from a contract. The practical
 consequence for a content author is that **the lowest-id member of an
 ability set is the NPC's primary attack** and the rest are cooldown
-fallbacks. (Inside `NPC_MELEE_RANGE` a non-pet NPC takes its off-cooldown melee ability first; see "Melee first inside reach" below.)
+fallbacks. The reach gate and the melee-first rule are described in [NPC combat reference pipelines](npc-combat-references.md#shared-stages).
 
-**A distance gate the original never had.** `classifyHostileAbility` carries
-the literal comment `# TODO: Check distance, LOS` above its
-`return ABILITY_Usable`. `choose_npc_ability_within_reach` is that TODO:
-
-- An `is_ranged = false` ability is only selectable when the target is
-  inside `NPC_MELEE_RANGE` (3 m). Without the gate a melee auto-attack
-  resolves to the 30 m ranged default, because `abilities.max_range` is the
-  `0` "use the server default" sentinel on every auto-attack in the seed and
-  `is_ranged` is otherwise read only by `calculate_qr` to pick the
-  accuracy/defence branch. The visible defect is an NPC playing a staff or
-  ribbon *swing* at a target thirty metres away.
-- When nothing is in reach it falls back to the unfiltered pick rather than
-  returning `None`. `None` is the caller's "all cooling, hold fire" signal,
-  so returning it would freeze a melee-only NPC at distance. Handing back
-  the out-of-reach ability lets `ability_ranges` report its real 3 m
-  `max_range`, and the fight tick's existing out-of-range arm then does the
-  right thing: a mobile NPC chases and swings once it arrives, a stationary
-  one lands in `stationary_holds` and turns to face its target.
-
-**Melee first inside reach (NC-20).** Inside `NPC_MELEE_RANGE` an NPC that is not a pet takes an off-cooldown melee ability before any ranged one, whatever the ids. A Jaffa at 2 m therefore swings the staff melee (710) rather than 584, and a Goa'uld (set 5) at 2 m swings 711. Beyond 3 m the ranged half is picked as before. Pets (D-NC4) keep the lowest-id walk.
+**Reach gate and melee-first (NC-20, D-NC4).** The distance gate and the melee-first rule inside
+`NPC_MELEE_RANGE` are described with the selector in [npc-combat-references.md](npc-combat-references.md#shared-stages).
 
 `NPC_MELEE_RANGE` is derived from the weapon table rather than invented.
 `resources.items` carries `min_melee_range` / `max_melee_range` alongside
