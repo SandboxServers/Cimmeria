@@ -5,7 +5,7 @@ Ledger: README.md. Packets: work-packets.md, work-packets-w1-w2.md, work-packets
 ## State (2026-11-28): campaign closed
 
 - All packets are Integrated: W0 to W3 (#2081..#2091), NC-32 (#2092), W4 lab runs attested (#2093), campaign review NC-50 with D-NC13 (#2094), close-out NC-51 (this PR).
-- V1 merged as #2081..#2094. Releases cut 2026-11-28: the first up to #2093, the second includes #2094.
+- V1 merged as #2081..#2094. Release `v2026-11-28.1` (2026-11-28) includes up to #2093; #2094 ships with the next release.
 - Decisions D-NC1..D-NC13 are final; D-NC10 is record only.
 - W4 lab runs (2026-11-27, server 086fc2710) passed with notes ([w4-lab-results.md](w4-lab-results.md)): NID 559/5310, PRU 221/264, ScavDog 1433, Jaffa 584/710/736, no 592 anywhere in the session.
 - Production placeholder 592 now only for templates with a human firearm (D-NC13); melee-only humans 28, 92, 1415, 1465 and deployable 400 idle; the gallery has 74 idle.
@@ -19,6 +19,7 @@ Ledger: README.md. Packets: work-packets.md, work-packets-w1-w2.md, work-packets
 - V1.1: Horden and Straegis Titan, scoped under `docs/analysis/npc-combat-v1-1/`.
 - V2: the remaining roster, scoped under `docs/analysis/npc-combat-v2/` (starting point: [roster-followup.md](roster-followup.md)).
 - GM health commands answer "target not found" in the lab (health refill used death plus Release): not fixed here.
+- Retire (ops, with user approval): worktree nc-10, branch NC-04-seed-trace and DB sgw_nc_04_seed_trace; the W2 and W3 packet worktrees with rm-worktree.ps1 --merged-into <PR>; nc-51 on merge. Keep nc-scope (branch npc-combat-reference/scope-v1-1-v2) until the V1.1 and V2 scoping merges.
 
 ## Waves
 
