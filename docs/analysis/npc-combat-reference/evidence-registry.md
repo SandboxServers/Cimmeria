@@ -176,7 +176,7 @@ closed in Wave 2 stay listed, struck through, so the trail is kept.
 Filled by NC-31 from the tests in the W2 integration tree (`2a1887107`). The
 W2 review ran the full cell-world, cell-combat and cell nextest and live-DB
 suites green on that tree (RESUME.md, 2026-11-27). NC-31 did not re-run them,
-and no live Z12 run has happened (W4, D-NC7).
+and the live Z12 lab runs of 2026-11-27 (W4, D-NC7) are recorded in the last row and in [w4-lab-results.md](w4-lab-results.md).
 
 | Reference | Test name | Packet | Result |
 |---|---|---|---|
@@ -189,4 +189,4 @@ and no live Z12 run has happened (W4, D-NC7).
 | Z12 range | `reference_range_holds_the_four_references`, `live_db_debug_area_reference_rows_load` | NC-03 | Green on W2 tree |
 | Harset Jaffa and pets | `live_db_regression_harset_jaffa_profiles`, `live_db_regression_jaffa_pet_sets_carry_staff` | NC-24 | Green on W2 tree (live DB) |
 | Tutorial and CellBlock | `live_db_regression_cellblock_profiles_unchanged`, `live_db_regression_tutorial_no_set_mobs_keep_firing_under_legacy`, `live_db_regression_pru_cellblock_activation_rows_intact` | NC-23 | Green on W2 tree (live DB) |
-| Z12 in the game | Lab runs 2026-11-27 (server 086fc2710, DB sgw_nc_uat, character Nctester): NID, Jaffa, ScavDog and PRU each fired their assigned ability; 0 bility_launched rows with ability 592 across the session (NC-44). Presentation not verified | NC-40..44 | Run for server behaviour; see [w4-lab-results.md](w4-lab-results.md) |
+| Z12 in the game | Lab runs 2026-11-27 (server 086fc2710, DB sgw_nc_uat, character Nctester): NID, Jaffa, ScavDog and PRU each fired their assigned ability; 0 ability_launched rows with ability 592 across the session (NC-44). Presentation not verified | NC-40..44 | Run for server behaviour; see [w4-lab-results.md](w4-lab-results.md) |

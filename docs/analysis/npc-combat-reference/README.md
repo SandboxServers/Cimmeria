@@ -176,11 +176,11 @@ says yes. NC-05 upgrades or contradicts it later.
 | NC-33 | 3 | packet-coder | Live UAT checklist and debug-area.toml rows | NC-03, NC-11..14 | Integrated (W3 PR) |
 | NC-34 | 3 | documentation-writer | Roster follow-up spec (Carnosaur, Horden, Rhinolion, AMBRat, Lenny, Unas) | NC-15, NC-31 | Integrated (W3 PR) |
 | NC-25 | 3 | packet-coder | Ability 559 uses its own tooltip effect 5310 (10H/100F, RECONSTRUCTED); effect 621 kept | NC-11, NC-31, NC-33, D-NC8, D-NC11, D-NC12 | Integrated (W3 PR) |
-| NC-40 | 4 | orchestrator + lab-driver | Live UAT: NID at Z12 | W3, D-NC7 | BlockedDecision |
-| NC-41 | 4 | orchestrator + lab-driver | Live UAT: Jaffa at Z12 | W3, D-NC7 | BlockedDecision |
-| NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | BlockedDecision |
-| NC-43 | 4 | orchestrator + lab-driver | Live UAT: PRU at Z12 | W3, D-NC7 | BlockedDecision |
-| NC-44 | 4 | orchestrator | Telemetry check: diagnostics and no 592 on creatures | W3, D-NC7 | BlockedDecision |
+| NC-40 | 4 | orchestrator + lab-driver | Live UAT: NID at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
+| NC-41 | 4 | orchestrator + lab-driver | Live UAT: Jaffa at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
+| NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
+| NC-43 | 4 | orchestrator + lab-driver | Live UAT: PRU at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
+| NC-44 | 4 | orchestrator | Telemetry check: diagnostics and no 592 on creatures | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
 | NC-32 | 4 | documentation-writer | NPC combat reference docs page (no lab) | NC-30, NC-31 | BlockedDependency |
 | NC-50 | 5 | packet-reviewer loop | Campaign review | W4 | BlockedDependency |
 | NC-51 | 5 | documentation-writer | Close-out: status docs, unified-uat, retire | NC-50 | BlockedDependency |
