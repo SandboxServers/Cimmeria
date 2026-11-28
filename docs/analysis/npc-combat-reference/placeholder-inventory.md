@@ -11,7 +11,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30). Snapshot as of
   Of those, 36 carry a `WP-Human.*` component and would keep 592 under
   `RequireWeaponEvidence` (D-NC1). After NC-50b (D-NC13) only the firearm
   whitelist keeps it: 31 do; rows 28, 92, 400, 1415 and 1465 now hold fire.
-  The other 470 would hold fire.
+  The other 475 hold fire (470 with no `WP-Human.*` component, plus the 5 rows above).
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
 - Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 42 candidates (6 cell-world, 5 cell-combat, 31 other). Of these, 3 need an NC-21 fix (2 cell-world, 1 other), 6 are unaffected and 33 need no fix.

@@ -37,14 +37,14 @@ fn effective_max_range(def: Option<&AbilityDef>, npc_attack_range: f32) -> f32 {
 /// cooling → caller holds fire. Empty bucket consults
 /// `placeholder_ability(PLACEHOLDER_POLICY)`, which is `None` under
 /// `RequireWeaponEvidence` (D-NC1: no 592 fallback in the AI), so an NPC with
-/// no ability idles and warns. A `WP-Human.*` template gets 592 at spawn, in
+/// no ability idles and warns. A human firearm template gets 592 at spawn, in
 /// its bucket, not here.
 ///
 /// Why no ammo gate: NPCs have infinite ammo (the `required_ammo > 0` check
 /// at the dispatch site is player-only). Gating here would permanently
 /// disable abilities like Pistol Shot 592 (`required_ammo = 1`) that a human
 /// with a firearm carries (the NC-30 spawn resolution grants it only with
-/// `WP-Human.*` evidence).
+/// human firearm evidence).
 ///
 /// Stable sort over `known_ability_ids` keeps selection deterministic
 /// tick-to-tick; a future "prefer higher threat_level_id" refinement
@@ -87,7 +87,7 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
 /// slot is a firing position. An ability with no def counts as ranged, the
 /// same way [`effective_max_range`] resolves it, and an NPC with no known
 /// abilities holds fire (no placeholder under `RequireWeaponEvidence` unless
-/// the template carries `WP-Human.*`; NC-30).
+/// the template carries human firearm; NC-30).
 pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
     let Some(npc) = space_mgr.get_entity(npc_id) else {
         return false;
@@ -146,7 +146,7 @@ pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
 /// # Effect on single-ability sets
 ///
 /// None. Every set that predates H09 — 1 (`579`), 2 (`221`), 3 (`559`), and
-/// the `592` spawn-time placeholder (granted only to a `WP-Human.*`
+/// the `592` spawn-time placeholder (granted only to a human firearm
 /// template under NC-30's `RequireWeaponEvidence`) — holds one
 /// `is_ranged = true` ability, so the filter either accepts the same pick
 /// the unfiltered walk would have made, or accepts nothing and delegates to

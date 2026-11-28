@@ -153,7 +153,7 @@ mod tests {
         );
     }
 
-    /// Spawn-path guard: a `WP-Human.*` template with no ability set gets the
+    /// Spawn-path guard: a human firearm template with no ability set gets the
     /// 592 placeholder and logs one INFO row, however many NPCs spawn.
     #[test]
     fn human_firearm_placeholder_logs_once_per_template_through_spawn() {

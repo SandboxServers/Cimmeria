@@ -1,6 +1,6 @@
 //! NC-30 (D-NC1): the placeholder policy is `RequireWeaponEvidence`. An NPC
 //! whose template has no ability set gets 592 Pistol Shot only with a
-//! `WP-Human.*` component. A creature, or a `WP-Jaffa.*` NPC, knows no ability,
+//! human firearm component. A creature, or a `WP-Jaffa.*` NPC, knows no ability,
 //! holds fire, and logs one `combat_profile_unresolved` per template.
 
 mod live_db {
@@ -91,9 +91,9 @@ mod live_db {
         assert_eq!(p.stats.get(HEALTH).unwrap().cur, 1000, "undamaged");
     }
 
-    /// A `WP-Human.*` firearm earns 592 even with no set: the NPC knows it and
+    /// A human firearm firearm earns 592 even with no set: the NPC knows it and
     /// starts it at 5 m (its cooldown is set) with no unresolved row. Revert
-    /// proof: dropping the `WP-Human.` grant leaves the NPC knowing nothing.
+    /// proof: dropping the firearm grant leaves the NPC knowing nothing.
     #[tokio::test]
     async fn live_db_human_with_firearm_still_knows_pistol_shot() {
         let pool = require_db_or_skip!();
