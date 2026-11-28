@@ -4,7 +4,7 @@ Ledger for "SGW Reconstruction Campaign 01: original NPC combat, weapons,
 creature attacks and animation restoration" (brief from Lomiada, 2026-11).
 Packets: [work-packets.md](work-packets.md) (rules, contract, wave 0),
 [work-packets-w1-w2.md](work-packets-w1-w2.md) and
-[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; open: blank PRU/ScavDog attacker name in the client combat log, NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
+[work-packets-w3-w5.md](work-packets-w3-w5.md). Resume card: [RESUME.md](RESUME.md). W4 lab results: [w4-lab-results.md](w4-lab-results.md) (2026-11-27; open: blank PRU/ScavDog attacker name in the client combat log (known cosmetic, templates 4 and 76 ship no name, see unified-uat K26), NID respawn and T2 Z9 squad not exercised, Jaffa damage tuning, GM health commands fail).
 
 ## Purpose
 
@@ -181,8 +181,8 @@ says yes. NC-05 upgrades or contradicts it later.
 | NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
 | NC-43 | 4 | orchestrator + lab-driver | Live UAT: PRU at Z12 | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
 | NC-44 | 4 | orchestrator | Telemetry check: diagnostics and no 592 on creatures | W3, D-NC7 | Lab run done (2026-11-27, [w4-lab-results.md](w4-lab-results.md)) |
-| NC-32 | 4 | documentation-writer | NPC combat reference docs page (no lab) | NC-30, NC-31 | BlockedDependency |
-| NC-50 | 5 | packet-reviewer loop | Campaign review | W4 | BlockedDependency |
+| NC-32 | 4 | documentation-writer | NPC combat reference docs page (no lab) | NC-30, NC-31 | Integrated (#2092) |
+| NC-50 | 5 | packet-reviewer loop | Campaign review | W4 | In progress |
 | NC-51 | 5 | documentation-writer | Close-out: status docs, unified-uat, retire | NC-50 | BlockedDependency |
 
 ## Dependency graph

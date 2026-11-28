@@ -46,6 +46,38 @@ Reconstructed values stay RECONSTRUCTED until a client record names them.
   client has no ability-keyed lookup. See the
   [presentation chain](../analysis/npc-combat-reference/presentation-chain.md).
 
+### Combat profile table and diagnostics
+
+`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves
+which abilities a spawned NPC gets. Spawning and the AI share the rule: an
+explicit `ability_ids` set always wins, and an empty set takes the placeholder
+that the policy allows.
+
+| `ability_ids` | Policy | Components | Abilities | Source |
+|---|---|---|---|---|
+| non-empty | any | any | the set, in order | `ExplicitSet` |
+| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
+
+592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
+(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
+firearm. The policy rule in the Resolver bullet above decides who keeps it.
+
+Two diagnostics log on target `npc.combat_profile`, at most once per template
+id per process:
+
+- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
+  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
+  (or `none`), `ability_id`, `ability_name`.
+- `combat_profile_unresolved` (WARN): the template has no ability set and no
+  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
+
+An explicit set logs nothing. In the AI, an NPC that knows no ability gets
+no fallback: `placeholder_ability(policy)` returns 592 under `Legacy` and
+`None` under `RequireWeaponEvidence`, so the NPC idles (D-NC1). The 592 for a
+`WP-Human.*` template comes from spawn resolution, not from the AI.
+
 ## The four pipelines
 
 All four Z12 tests live in
@@ -93,15 +125,7 @@ follows these steps for each roster NPC.
 
 ## Not yet verified in the client
 
-Nothing on this page is verified in the live client. Lab runs are separate
-and attest later. Every row of the
-[Z12 checklist](../analysis/npc-combat-reference/uat-checklist.md) is pending:
-
-- NID: N1 to N5 (fire, cover, the 10 Health burst, loot, respawn).
-- Jaffa: J1 to J4 (bolt, staff swing, return to the bolt, the lieutenant).
-- ScavDog: S1 to S4 (no gun, the bite, its damage, death).
-- PRU: P1 to P3 (the beam, the shock, the drone).
-- Telemetry: T1 to T3.
+W4 lab runs (2026-11-27, [w4-lab-results.md](../analysis/npc-combat-reference/w4-lab-results.md)) confirmed the server side: NID 559/5310, PRU 221/264, ScavDog 1433, Jaffa 584/710/736, and no ability 592 row in the session. Not verified: animation, muzzle effects, VFX and sound (the lab driver reads chat and the combat log only); the NID 20 s respawn; the T2 Z9 squad. Nothing here is ORIGINAL CLIENT VERIFIED from a visual read.
 
 Rows that rest on RECONSTRUCTED values (N3, the J2 damage number, S2, S3)
 stay RECONSTRUCTED even when they pass.

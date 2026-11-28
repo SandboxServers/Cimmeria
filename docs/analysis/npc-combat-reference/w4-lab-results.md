@@ -18,7 +18,7 @@ Attested results of the W4 live-client lab runs NC-40..44. Server `086fc2710`, r
 
 - Server evidence (combat.log): 23 matching lines for attacker 100431 ability 221; none for ability 592.
 - Client: "Energy Shock hits/glances/crits you for 16 Health damage" every step (health 760 to 456 in about 25 s).
-- Anomaly: the client shows the attacker name blank ("'s Energy Shock"); `client_entity_find` by name returned nothing; entity 100431 has no name. Recorded as an open display issue (name or template name), not a combat failure.
+- Anomaly: the client shows the attacker name blank ("'s Energy Shock"); `client_entity_find` by name returned nothing; entity 100431 has no name. Known cosmetic (K26), not a combat failure.
 - Animation and beam not described by the driver: presentation NOT verified. Screenshot `lab_screenshot-20261127-214007.156.png`.
 
 ## NC-42 ScavDog (template 76, entity 100432, ability 1433 Mob Strike, set 6): PASS with notes
@@ -51,6 +51,6 @@ Attested results of the W4 live-client lab runs NC-40..44. Server `086fc2710`, r
 
 ## Open findings from W4
 
-1. Blank attacker name for PRU and ScavDog in the client combat log (new open issue; no fix packet written).
+1. Blank attacker name for PRU and ScavDog in the client combat log (known cosmetic: templates 4 and 76 ship no name, unified-uat K26; not a combat defect).
 2. Jaffa damage feels high; effect 736 is RECONSTRUCTED, owner tuning.
 3. The items in "Not exercised or not verified" above.

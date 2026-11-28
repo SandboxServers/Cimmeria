@@ -2,8 +2,9 @@
 //! and whether that came from an explicit ability set or from a placeholder.
 //!
 //! `NPC_DEFAULT_ABILITY` (592 Pistol Shot) is a Giza/Python placeholder, not
-//! Cimmeria behaviour. Spawning applies it when a template has no ability set
-//! (`spawn.rs:314-317`), and the AI applies it when an NPC knows no ability.
+//! Cimmeria behaviour. Spawning applies it only under `PLACEHOLDER_POLICY`:
+//! `Legacy` gives every set-less template 592; `RequireWeaponEvidence`
+//! (production, NC-30) gives it to templates with a `WP-Human.` component.
 //! It is a human firearm, so it is wrong for creatures. The resolver makes
 //! that choice in one place and reports it.
 //!
